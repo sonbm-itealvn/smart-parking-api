@@ -3,11 +3,185 @@ import { ParkingSessionController } from "../controllers/parking-session.control
 
 const router = Router();
 
+/**
+ * @swagger
+ * /api/parking-sessions:
+ *   post:
+ *     summary: Tạo phiên đỗ xe mới
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ParkingSession'
+ *     responses:
+ *       201:
+ *         description: Phiên đỗ xe được tạo thành công
+ */
 router.post("/", ParkingSessionController.create);
+
+/**
+ * @swagger
+ * /api/parking-sessions:
+ *   get:
+ *     summary: Lấy tất cả phiên đỗ xe
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Danh sách phiên đỗ xe
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/ParkingSession'
+ */
 router.get("/", ParkingSessionController.getAll);
+
+/**
+ * @swagger
+ * /api/parking-sessions/{id}:
+ *   get:
+ *     summary: Lấy phiên đỗ xe theo ID
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Thông tin phiên đỗ xe
+ *       404:
+ *         description: Phiên đỗ xe không tồn tại
+ */
 router.get("/:id", ParkingSessionController.getById);
+
+/**
+ * @swagger
+ * /api/parking-sessions/{id}:
+ *   put:
+ *     summary: Cập nhật phiên đỗ xe
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ParkingSession'
+ *     responses:
+ *       200:
+ *         description: Phiên đỗ xe được cập nhật thành công
+ */
 router.put("/:id", ParkingSessionController.update);
+
+/**
+ * @swagger
+ * /api/parking-sessions/{id}:
+ *   delete:
+ *     summary: Xóa phiên đỗ xe
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       204:
+ *         description: Phiên đỗ xe được xóa thành công
+ */
 router.delete("/:id", ParkingSessionController.delete);
 
-export default router;
+/**
+ * @swagger
+ * /api/parking-sessions/{id}/exit:
+ *   post:
+ *     summary: Tính tiền và cho xe ra khỏi bãi đỗ
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của parking session
+ *     responses:
+ *       200:
+ *         description: Xe đã ra khỏi bãi đỗ và phí đã được tính
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Vehicle exited successfully
+ *                 parkingSession:
+ *                   $ref: '#/components/schemas/ParkingSession'
+ *                 feeDetails:
+ *                   type: object
+ *                   properties:
+ *                     entryTime:
+ *                       type: string
+ *                       format: date-time
+ *                     exitTime:
+ *                       type: string
+ *                       format: date-time
+ *                     durationHours:
+ *                       type: number
+ *                       example: 3
+ *                       description: Tổng số giờ đỗ xe
+ *                     firstHourFee:
+ *                       type: number
+ *                       example: 30000
+ *                       description: Phí giờ đầu tiên
+ *                     increaseRate:
+ *                       type: string
+ *                       example: "10%"
+ *                       description: Tỷ lệ tăng mỗi giờ
+ *                     feeBreakdown:
+ *                       type: array
+ *                       description: Chi tiết phí từng giờ
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           hour:
+ *                             type: number
+ *                             example: 1
+ *                           fee:
+ *                             type: number
+ *                             example: 30000
+ *                     totalFee:
+ *                       type: number
+ *                       format: decimal
+ *                       example: 96300
+ *                       description: Tổng phí (giờ 1: 30k, giờ 2: 33k, giờ 3: 36.3k)
+ *       400:
+ *         description: Session đã hoàn thành hoặc dữ liệu không hợp lệ
+ *       404:
+ *         description: Parking session không tồn tại
+ */
+router.post("/:id/exit", ParkingSessionController.exitVehicle);
 
+export default router;
