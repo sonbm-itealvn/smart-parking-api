@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { NotificationController } from "../controllers/notification.controller";
+import { requireAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
  *       201:
  *         description: Thông báo được tạo thành công
  */
-router.post("/", NotificationController.create);
+router.post("/", requireAdmin, NotificationController.create);
 
 /**
  * @swagger
@@ -89,13 +90,13 @@ router.get("/:id", NotificationController.getById);
  *       200:
  *         description: Thông báo được cập nhật thành công
  */
-router.put("/:id", NotificationController.update);
+router.put("/:id", requireAdmin, NotificationController.update);
 
 /**
  * @swagger
  * /api/notifications/{id}:
  *   delete:
- *     summary: Xóa thông báo
+ *     summary: Xóa thông báo (Admin only)
  *     tags: [Notifications]
  *     security:
  *       - bearerAuth: []
@@ -108,7 +109,9 @@ router.put("/:id", NotificationController.update);
  *     responses:
  *       204:
  *         description: Thông báo được xóa thành công
+ *       403:
+ *         description: Không có quyền truy cập
  */
-router.delete("/:id", NotificationController.delete);
+router.delete("/:id", requireAdmin, NotificationController.delete);
 
 export default router;

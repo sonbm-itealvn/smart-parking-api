@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { PaymentController } from "../controllers/payment.controller";
+import { requireAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -89,13 +90,13 @@ router.get("/:id", PaymentController.getById);
  *       200:
  *         description: Thanh toán được cập nhật thành công
  */
-router.put("/:id", PaymentController.update);
+router.put("/:id", requireAdmin, PaymentController.update);
 
 /**
  * @swagger
  * /api/payments/{id}:
  *   delete:
- *     summary: Xóa thanh toán
+ *     summary: Xóa thanh toán (Admin only)
  *     tags: [Payments]
  *     security:
  *       - bearerAuth: []
@@ -108,7 +109,9 @@ router.put("/:id", PaymentController.update);
  *     responses:
  *       204:
  *         description: Thanh toán được xóa thành công
+ *       403:
+ *         description: Không có quyền truy cập
  */
-router.delete("/:id", PaymentController.delete);
+router.delete("/:id", requireAdmin, PaymentController.delete);
 
 export default router;

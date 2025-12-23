@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ParkingSlotController } from "../controllers/parking-slot.controller";
+import { requireAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
  *       201:
  *         description: Vị trí đỗ xe được tạo thành công
  */
-router.post("/", ParkingSlotController.create);
+router.post("/", requireAdmin, ParkingSlotController.create);
 
 /**
  * @swagger
@@ -89,13 +90,13 @@ router.get("/:id", ParkingSlotController.getById);
  *       200:
  *         description: Vị trí đỗ xe được cập nhật thành công
  */
-router.put("/:id", ParkingSlotController.update);
+router.put("/:id", requireAdmin, ParkingSlotController.update);
 
 /**
  * @swagger
  * /api/parking-slots/{id}:
  *   delete:
- *     summary: Xóa vị trí đỗ xe
+ *     summary: Xóa vị trí đỗ xe (Admin only)
  *     tags: [Parking Slots]
  *     security:
  *       - bearerAuth: []
@@ -108,7 +109,9 @@ router.put("/:id", ParkingSlotController.update);
  *     responses:
  *       204:
  *         description: Vị trí đỗ xe được xóa thành công
+ *       403:
+ *         description: Không có quyền truy cập
  */
-router.delete("/:id", ParkingSlotController.delete);
+router.delete("/:id", requireAdmin, ParkingSlotController.delete);
 
 export default router;

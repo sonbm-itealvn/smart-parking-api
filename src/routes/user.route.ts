@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { UserController } from "../controllers/user.controller";
-import { requireAdmin } from "../middleware/role.middleware";
+import { requireAdmin, requireOwnResourceOrAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -72,7 +72,7 @@ router.get("/", requireAdmin, UserController.getAll);
  *       404:
  *         description: User không tồn tại
  */
-router.get("/:id", UserController.getById);
+router.get("/:id", requireOwnResourceOrAdmin, UserController.getById);
 
 /**
  * @swagger
@@ -107,7 +107,7 @@ router.get("/:id", UserController.getById);
  *       404:
  *         description: User không tồn tại
  */
-router.put("/:id", UserController.update);
+router.put("/:id", requireOwnResourceOrAdmin, UserController.update);
 
 /**
  * @swagger

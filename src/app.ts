@@ -9,6 +9,8 @@ import vehicleRoutes from "./routes/vehicle.route";
 import notificationRoutes from "./routes/notification.route";
 import parkingSessionRoutes from "./routes/parking-session.route";
 import paymentRoutes from "./routes/payment.route";
+import vehicleDetectionRoutes from "./routes/vehicle-detection.route";
+import fastapiRoutes from "./routes/fastapi.route";
 import { authenticateToken } from "./middleware/auth.middleware";
 import { corsMiddleware } from "./config/cors";
 import { swaggerSpec } from "./config/swagger";
@@ -27,6 +29,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
 
 // Public Routes (No authentication required)
 app.use("/api/auth", authRoutes);
+app.use("/api/vehicle-detection", vehicleDetectionRoutes); // Webhook từ FastAPI
 
 // Protected Routes (Authentication required)
 app.use("/api/roles", authenticateToken, roleRoutes);
@@ -37,6 +40,7 @@ app.use("/api/vehicles", authenticateToken, vehicleRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/parking-sessions", authenticateToken, parkingSessionRoutes);
 app.use("/api/payments", authenticateToken, paymentRoutes);
+app.use("/api", fastapiRoutes); // FastAPI integration endpoints
 
 /**
  * @swagger

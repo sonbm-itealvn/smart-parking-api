@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { VehicleController } from "../controllers/vehicle.controller";
+import { requireAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -89,13 +90,13 @@ router.get("/:id", VehicleController.getById);
  *       200:
  *         description: Phương tiện được cập nhật thành công
  */
-router.put("/:id", VehicleController.update);
+router.put("/:id", requireAdmin, VehicleController.update);
 
 /**
  * @swagger
  * /api/vehicles/{id}:
  *   delete:
- *     summary: Xóa phương tiện
+ *     summary: Xóa phương tiện (Admin only)
  *     tags: [Vehicles]
  *     security:
  *       - bearerAuth: []
@@ -108,7 +109,9 @@ router.put("/:id", VehicleController.update);
  *     responses:
  *       204:
  *         description: Phương tiện được xóa thành công
+ *       403:
+ *         description: Không có quyền truy cập
  */
-router.delete("/:id", VehicleController.delete);
+router.delete("/:id", requireAdmin, VehicleController.delete);
 
 export default router;

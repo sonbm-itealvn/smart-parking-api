@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { ParkingSessionController } from "../controllers/parking-session.controller";
+import { requireAdmin } from "../middleware/role.middleware";
 
 const router = Router();
 
@@ -21,7 +22,7 @@ const router = Router();
  *       201:
  *         description: Phiên đỗ xe được tạo thành công
  */
-router.post("/", ParkingSessionController.create);
+router.post("/", requireAdmin, ParkingSessionController.create);
 
 /**
  * @swagger
@@ -89,13 +90,13 @@ router.get("/:id", ParkingSessionController.getById);
  *       200:
  *         description: Phiên đỗ xe được cập nhật thành công
  */
-router.put("/:id", ParkingSessionController.update);
+router.put("/:id", requireAdmin, ParkingSessionController.update);
 
 /**
  * @swagger
  * /api/parking-sessions/{id}:
  *   delete:
- *     summary: Xóa phiên đỗ xe
+ *     summary: Xóa phiên đỗ xe (Admin only)
  *     tags: [Parking Sessions]
  *     security:
  *       - bearerAuth: []
@@ -108,8 +109,10 @@ router.put("/:id", ParkingSessionController.update);
  *     responses:
  *       204:
  *         description: Phiên đỗ xe được xóa thành công
+ *       403:
+ *         description: Không có quyền truy cập
  */
-router.delete("/:id", ParkingSessionController.delete);
+router.delete("/:id", requireAdmin, ParkingSessionController.delete);
 
 /**
  * @swagger
