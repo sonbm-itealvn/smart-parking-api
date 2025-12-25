@@ -66,6 +66,21 @@ const swaggerDefinition: SwaggerDefinition = {
             type: "string",
             enum: ["available", "occupied", "out_of_service"],
           },
+          coordinates: {
+            type: "array",
+            items: {
+              type: "array",
+              items: {
+                type: "array",
+                items: {
+                  type: "number",
+                },
+              },
+            },
+            description: "Polygon coordinates của ô đỗ xe dưới dạng GeoJSON format: [[[x1,y1], [x2,y2], [x3,y3], [x4,y4], [x1,y1]]]",
+            nullable: true,
+            example: [[[0, 0], [100, 0], [100, 50], [0, 50], [0, 0]]],
+          },
         },
       },
       Vehicle: {
@@ -163,6 +178,22 @@ const swaggerDefinition: SwaggerDefinition = {
           refreshToken: { type: "string" },
         },
       },
+      UploadedImage: {
+        type: "object",
+        properties: {
+          id: { type: "integer", format: "int64" },
+          filename: { type: "string", description: "Tên file unique trên server" },
+          originalName: { type: "string", description: "Tên file gốc từ client" },
+          mimetype: { type: "string", description: "MIME type của file" },
+          size: { type: "integer", format: "int64", description: "Kích thước file (bytes)" },
+          path: { type: "string", description: "Đường dẫn file trên server" },
+          url: { type: "string", nullable: true, description: "URL để truy cập file" },
+          userId: { type: "integer", format: "int64", nullable: true, description: "ID của user upload" },
+          description: { type: "string", nullable: true, description: "Mô tả ảnh" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
     },
   },
   tags: [
@@ -205,6 +236,10 @@ const swaggerDefinition: SwaggerDefinition = {
     {
       name: "Health",
       description: "Health check endpoints",
+    },
+    {
+      name: "Upload Images",
+      description: "Image upload and management endpoints",
     },
   ],
 };

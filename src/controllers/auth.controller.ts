@@ -82,11 +82,12 @@ export class AuthController {
       const passwordHash = await bcrypt.hash(password, saltRounds);
 
       // Create user (default roleId = 2 for regular user if not provided)
+      // Note: roleId = 2 is ADMIN, other roleIds are regular users
       const newUser = userRepo.create({
         fullName,
         email,
         passwordHash,
-        roleId: roleId || 2, // Assuming 1 = Admin, 2 = User
+        roleId: roleId || 2, // Default to roleId = 2 (ADMIN) if not provided
       });
 
       const savedUser = await userRepo.save(newUser);

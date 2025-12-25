@@ -7,11 +7,16 @@ export const authorizeRoles = (...allowedRoles: string[]) => {
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // If roleName is not in the token, you might need to fetch it from database
-    // For now, assuming roleName is in the JWT payload
+    // Check both roleName and roleId
     const userRole = req.user.roleName || "";
+    const userRoleId = req.user.roleId;
 
-    if (!allowedRoles.includes(userRole)) {
+    // Check if roleName matches (case-insensitive)
+    const roleNameMatch = allowedRoles.some(
+      (role) => userRole.toLowerCase() === role.toLowerCase()
+    );
+
+    if (!roleNameMatch) {
       return res.status(403).json({
         error: "Access denied. Insufficient permissions.",
       });
@@ -22,8 +27,26 @@ export const authorizeRoles = (...allowedRoles: string[]) => {
 };
 
 // Convenience middleware for common roles
-export const requireAdmin = authorizeRoles("Admin");
-export const requireUser = authorizeRoles("User", "Admin");
+// Admin role: roleId = 2, roleName = "ADMIN"
+export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const userRoleId = req.user.roleId;
+  const userRoleName = (req.user.roleName || "").toUpperCase();
+
+  // Check if user is admin: roleId = 2 OR roleName = "ADMIN"
+  if (userRoleId === 2 || userRoleName === "ADMIN") {
+    return next();
+  }
+
+  return res.status(403).json({
+    error: "Access denied. Admin privileges required.",
+  });
+};
+
+export const requireUser = authorizeRoles("User", "Admin", "ADMIN");
 
 /**
  * Middleware để kiểm tra user chỉ có thể sửa thông tin của chính mình
@@ -34,12 +57,13 @@ export const requireOwnResourceOrAdmin = (req: AuthRequest, res: Response, next:
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const userRole = req.user.roleName || "";
+  const userRoleId = req.user.roleId;
+  const userRoleName = (req.user.roleName || "").toUpperCase();
   const userId = req.user.userId;
   const resourceId = parseInt(req.params.id);
 
-  // Admin có thể truy cập bất kỳ resource nào
-  if (userRole === "Admin") {
+  // Admin có thể truy cập bất kỳ resource nào (roleId = 2 OR roleName = "ADMIN")
+  if (userRoleId === 2 || userRoleName === "ADMIN") {
     return next();
   }
 

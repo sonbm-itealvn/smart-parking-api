@@ -10,6 +10,7 @@ import { Notification } from "../entity/Notification";
 import { ParkingSession } from "../entity/ParkingSession";
 import { Payment } from "../entity/Payment";
 import { RefreshToken } from "../entity/RefreshToken";
+import { UploadedImage } from "../entity/UploadedImage";
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ export const AppDataSource = new DataSource({
     ParkingSession,
     Payment,
     RefreshToken,
+    UploadedImage,
   ],
   synchronize: true, // dev OK, prod nên false
   logging: false,

@@ -155,10 +155,14 @@ router.delete("/:id", requireAdmin, ParkingSessionController.delete);
  *                       type: number
  *                       example: 3
  *                       description: Tổng số giờ đỗ xe
+ *                     pricePerHour:
+ *                       type: number
+ *                       example: 30000
+ *                       description: Giá mỗi giờ của bãi đỗ xe (từ parkingLot.pricePerHour)
  *                     firstHourFee:
  *                       type: number
  *                       example: 30000
- *                       description: Phí giờ đầu tiên
+ *                       description: Phí giờ đầu tiên (bằng pricePerHour)
  *                     increaseRate:
  *                       type: string
  *                       example: "10%"

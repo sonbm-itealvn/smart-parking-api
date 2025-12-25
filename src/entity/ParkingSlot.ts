@@ -31,6 +31,14 @@ export class ParkingSlot {
   })
   status!: ParkingSlotStatus;
 
+  @Column({
+    type: "json",
+    nullable: true,
+    name: "coordinates",
+    comment: "Polygon coordinates của ô đỗ xe dưới dạng GeoJSON format: [[[x1,y1], [x2,y2], [x3,y3], [x4,y4], [x1,y1]]]",
+  })
+  coordinates!: number[][][] | null;
+
   @OneToMany(() => ParkingSession, (session) => session.parkingSlot)
   parkingSessions!: ParkingSession[];
 }

@@ -136,18 +136,25 @@ export class ParkingSessionController {
       const durationHours = Math.ceil(durationMs / (1000 * 60 * 60)); // Làm tròn lên đến giờ gần nhất
       const totalHours = durationHours < 1 ? 1 : durationHours; // Tối thiểu 1 giờ
 
-      // Tính phí theo cơ chế: Giờ đầu 30,000, mỗi giờ tiếp theo tăng 10%
-      const FIRST_HOUR_FEE = 30000;
+      // Lấy giá mỗi giờ từ parking lot
+      const pricePerHour = Number(parkingLot.pricePerHour);
+      if (!pricePerHour || pricePerHour <= 0) {
+        return res.status(400).json({
+          error: "Invalid pricePerHour for parking lot",
+        });
+      }
+
+      // Tính phí theo cơ chế: Giờ đầu = pricePerHour, mỗi giờ tiếp theo tăng 10%
       const INCREASE_RATE = 1.1; // 10% increase
 
       let totalFee = 0;
-      let currentHourFee = FIRST_HOUR_FEE;
+      let currentHourFee = pricePerHour;
       const feeBreakdown: Array<{ hour: number; fee: number }> = [];
 
       for (let hour = 1; hour <= totalHours; hour++) {
         if (hour === 1) {
-          // Giờ đầu tiên: 30,000
-          currentHourFee = FIRST_HOUR_FEE;
+          // Giờ đầu tiên: pricePerHour
+          currentHourFee = pricePerHour;
         } else {
           // Các giờ tiếp theo: tăng 10%
           currentHourFee = Math.round(currentHourFee * INCREASE_RATE);
@@ -179,7 +186,8 @@ export class ParkingSessionController {
           entryTime: entryTime,
           exitTime: exitTime,
           durationHours: totalHours,
-          firstHourFee: FIRST_HOUR_FEE,
+          pricePerHour: pricePerHour,
+          firstHourFee: pricePerHour,
           increaseRate: "10%",
           feeBreakdown: feeBreakdown,
           totalFee: totalFee,

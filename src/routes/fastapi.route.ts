@@ -9,7 +9,7 @@ const router = Router();
  * @swagger
  * /api/parking-space/recommend:
  *   post:
- *     summary: Upload image hoặc video để nhận annotated PNG với slot trống gần nhất
+ *     summary: Upload image hoặc video để nhận annotated PNG với slot trống gần nhất. Tự động so khớp tọa độ xe với tọa độ slot bằng polygon intersection để cập nhật trạng thái slot.
  *     tags: [FastAPI - Parking Space]
  *     security:
  *       - bearerAuth: []
@@ -25,10 +25,10 @@ const router = Router();
  *         name: parkingLotId
  *         type: integer
  *         required: false
- *         description: ID của bãi đỗ xe (optional)
+ *         description: ID của bãi đỗ xe (required để so khớp tọa độ và cập nhật trạng thái slot)
  *     responses:
  *       200:
- *         description: Annotated PNG image với slot trống được đánh dấu
+ *         description: Annotated PNG image với slot trống được đánh dấu. Hệ thống tự động detect xe, lấy tọa độ polygon của xe từ FastAPI, so khớp với tọa độ polygon của các slot trong DB bằng polygon intersection area. Nếu intersection area > 50% diện tích slot, slot sẽ được đánh dấu là OCCUPIED.
  *         content:
  *           image/png:
  *             schema:
@@ -50,7 +50,7 @@ router.post(
  * @swagger
  * /api/parking-space/recommend-video:
  *   post:
- *     summary: Upload video để nhận annotated PNG với slot trống gần nhất
+ *     summary: Upload video để nhận annotated PNG với slot trống gần nhất. Tự động so khớp tọa độ xe với tọa độ slot bằng polygon intersection để cập nhật trạng thái slot.
  *     tags: [FastAPI - Parking Space]
  *     security:
  *       - bearerAuth: []
@@ -66,10 +66,10 @@ router.post(
  *         name: parkingLotId
  *         type: integer
  *         required: false
- *         description: ID của bãi đỗ xe (optional)
+ *         description: ID của bãi đỗ xe (required để so khớp tọa độ và cập nhật trạng thái slot)
  *     responses:
  *       200:
- *         description: Annotated PNG image với slot trống được đánh dấu
+ *         description: Annotated PNG image với slot trống được đánh dấu. Hệ thống tự động detect xe, lấy tọa độ polygon của xe từ FastAPI, so khớp với tọa độ polygon của các slot trong DB bằng polygon intersection area. Nếu intersection area > 50% diện tích slot, slot sẽ được đánh dấu là OCCUPIED.
  *         content:
  *           image/png:
  *             schema:

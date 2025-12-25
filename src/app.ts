@@ -11,9 +11,11 @@ import parkingSessionRoutes from "./routes/parking-session.route";
 import paymentRoutes from "./routes/payment.route";
 import vehicleDetectionRoutes from "./routes/vehicle-detection.route";
 import fastapiRoutes from "./routes/fastapi.route";
+import uploadImageRoutes from "./routes/uploadImage.route";
 import { authenticateToken } from "./middleware/auth.middleware";
 import { corsMiddleware } from "./config/cors";
 import { swaggerSpec } from "./config/swagger";
+import path from "path";
 
 const app = express();
 
@@ -21,11 +23,18 @@ const app = express();
 app.use(corsMiddleware);
 app.use(express.json());
 
+// Static file serving cho uploaded images
+app.use("/uploads/images", express.static(path.join(process.cwd(), "uploads", "images")));
+
 // Swagger Documentation
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: ".swagger-ui .topbar { display: none }",
   customSiteTitle: "Smart Parking API Documentation",
 }));
+app.get("/api-docs.json", (_req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerSpec);
+});
 
 // Public Routes (No authentication required)
 app.use("/api/auth", authRoutes);
@@ -40,6 +49,7 @@ app.use("/api/vehicles", authenticateToken, vehicleRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/parking-sessions", authenticateToken, parkingSessionRoutes);
 app.use("/api/payments", authenticateToken, paymentRoutes);
+app.use("/api/upload-images", authenticateToken, uploadImageRoutes);
 app.use("/api", fastapiRoutes); // FastAPI integration endpoints
 
 /**

@@ -17,9 +17,20 @@ class FastAPIService {
 
   constructor() {
     this.baseURL = process.env.FASTAPI_URL || "http://localhost:8000";
+
+    // Timeout cho các request tới FastAPI (ms) – video annotate có thể rất lâu
+    const defaultTimeoutMs = 600000; // 10 phút
+    const configuredTimeoutMs = process.env.FASTAPI_TIMEOUT_MS
+      ? Number(process.env.FASTAPI_TIMEOUT_MS)
+      : defaultTimeoutMs;
+
     this.client = axios.create({
       baseURL: this.baseURL,
-      timeout: 60000, // 60 seconds cho video processing
+      timeout: configuredTimeoutMs,
+      // @ts-ignore - maxBodyLength và maxContentLength không có trong type definitions nhưng axios hỗ trợ
+      maxBodyLength: Infinity,
+      // @ts-ignore
+      maxContentLength: Infinity,
     });
   }
 
@@ -29,7 +40,7 @@ class FastAPIService {
    * @param file File buffer, stream, hoặc đường dẫn đến file
    * @param fileName Tên file (required nếu file là buffer)
    * @param parkingLotId ID của bãi đỗ xe (optional)
-   * @returns Annotated PNG image buffer
+   * @returns Annotated PNG image buffer và tọa độ xe (nếu có)
    */
   async recommendParkingSpace(
     file: string | Buffer | NodeJS.ReadableStream,
@@ -61,12 +72,72 @@ class FastAPIService {
         responseType: "arraybuffer", // Nhận binary data (PNG)
       });
 
+      // Lấy tọa độ xe từ header hoặc response body nếu có
+      const vehicleCoordinatesHeader = response.headers["x-vehicle-coordinates"] || 
+                                      response.headers["vehicle-coordinates"];
+      let vehicleCoordinates: number[][][] | null = null;
+      
+      if (vehicleCoordinatesHeader) {
+        try {
+          vehicleCoordinates = JSON.parse(vehicleCoordinatesHeader as string);
+        } catch (e) {
+          console.warn("Failed to parse vehicle coordinates from header:", e);
+        }
+      }
+
       return {
         image: Buffer.from(response.data as ArrayBuffer),
         contentType: response.headers["content-type"] || "image/png",
+        vehicleCoordinates: vehicleCoordinates,
       };
     } catch (error: any) {
       console.error("Error calling FastAPI recommendParkingSpace:", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * POST /parking-space/detect-vehicles
+   * Upload image hoặc video để detect xe và lấy tọa độ của các xe
+   * @param file File buffer, stream, hoặc đường dẫn đến file
+   * @param fileName Tên file (required nếu file là buffer)
+   * @param parkingLotId ID của bãi đỗ xe (optional)
+   * @returns Tọa độ của các xe được detect (polygon coordinates)
+   */
+  async detectVehicles(
+    file: string | Buffer | NodeJS.ReadableStream,
+    fileName?: string,
+    parkingLotId?: number
+  ) {
+    try {
+      const formData = new FormData();
+      
+      if (typeof file === "string") {
+        formData.append("file", fs.createReadStream(file));
+      } else if (Buffer.isBuffer(file)) {
+        formData.append("file", file, fileName || "image.jpg");
+      } else {
+        formData.append("file", file, fileName || "image.jpg");
+      }
+      
+      if (parkingLotId) {
+        formData.append("parking_lot_id", parkingLotId.toString());
+      }
+
+      const response = await this.client.post("/parking-space/detect-vehicles", formData, {
+        headers: {
+          ...formData.getHeaders(),
+        },
+        responseType: "json", // Nhận JSON với tọa độ xe
+      });
+
+      // FastAPI trả về: { vehicles: [{ coordinates: [[[x1,y1], [x2,y2], ...]] }] }
+      const data = response.data as { vehicles?: any[] };
+      return {
+        vehicles: data.vehicles || [],
+      };
+    } catch (error: any) {
+      console.error("Error calling FastAPI detectVehicles:", error.message);
       throw error;
     }
   }
@@ -77,7 +148,7 @@ class FastAPIService {
    * @param file File buffer, stream, hoặc đường dẫn đến file video
    * @param fileName Tên file (required nếu file là buffer)
    * @param parkingLotId ID của bãi đỗ xe (optional)
-   * @returns Annotated PNG image buffer
+   * @returns Annotated PNG image buffer và tọa độ xe (nếu có)
    */
   async recommendParkingSpaceVideo(
     file: string | Buffer | NodeJS.ReadableStream,
@@ -110,9 +181,23 @@ class FastAPIService {
         responseType: "arraybuffer", // Nhận binary data (PNG)
       });
 
+      // Lấy tọa độ xe từ header nếu có
+      const vehicleCoordinatesHeader = response.headers["x-vehicle-coordinates"] || 
+                                      response.headers["vehicle-coordinates"];
+      let vehicleCoordinates: number[][][] | null = null;
+      
+      if (vehicleCoordinatesHeader) {
+        try {
+          vehicleCoordinates = JSON.parse(vehicleCoordinatesHeader as string);
+        } catch (e) {
+          console.warn("Failed to parse vehicle coordinates from header:", e);
+        }
+      }
+
       return {
         image: Buffer.from(response.data as ArrayBuffer),
         contentType: response.headers["content-type"] || "image/png",
+        vehicleCoordinates: vehicleCoordinates,
       };
     } catch (error: any) {
       console.error("Error calling FastAPI recommendParkingSpaceVideo:", error.message);
