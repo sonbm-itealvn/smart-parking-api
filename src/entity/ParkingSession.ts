@@ -15,12 +15,15 @@ export class ParkingSession {
   @PrimaryGeneratedColumn({ type: "bigint" })
   id!: number;
 
-  @Column({ type: "bigint", name: "vehicle_id" })
-  vehicleId!: number;
+  @Column({ type: "bigint", name: "vehicle_id", nullable: true })
+  vehicleId!: number | null;
 
-  @ManyToOne(() => Vehicle, (vehicle) => vehicle.parkingSessions)
+  @ManyToOne(() => Vehicle, (vehicle) => vehicle.parkingSessions, { nullable: true })
   @JoinColumn({ name: "vehicle_id" })
-  vehicle!: Vehicle;
+  vehicle!: Vehicle | null;
+
+  @Column({ type: "varchar", length: 50, name: "license_plate", nullable: true })
+  licensePlate!: string | null;
 
   @Column({ type: "bigint", name: "parking_slot_id" })
   parkingSlotId!: number;

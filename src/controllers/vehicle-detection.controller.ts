@@ -76,7 +76,8 @@ export class VehicleDetectionController {
     const slotRepo = AppDataSource.getRepository(ParkingSlot);
     const notificationRepo = AppDataSource.getRepository(Notification);
 
-    // Kiểm tra xem có session active nào với biển số này không (chỉ khi có vehicle)
+    // Kiểm tra xem có session active nào với biển số này không
+    // Tìm theo vehicleId (nếu có) hoặc licensePlate (xe vãng lai)
     let activeSession = null;
     if (vehicle) {
       activeSession = await sessionRepo.findOne({
@@ -85,6 +86,15 @@ export class VehicleDetectionController {
           status: ParkingSessionStatus.ACTIVE,
         },
         relations: ["vehicle"],
+      });
+    } else {
+      // Kiểm tra xe vãng lai có session active không
+      activeSession = await sessionRepo.findOne({
+        where: {
+          licensePlate: licensePlate,
+          vehicleId: null, // Xe vãng lai
+          status: ParkingSessionStatus.ACTIVE,
+        },
       });
     }
 
@@ -133,6 +143,7 @@ export class VehicleDetectionController {
       // Tạo parking session
       const newSession = sessionRepo.create({
         vehicleId: vehicle.id,
+        licensePlate: licensePlate, // Lưu biển số để dễ query
         parkingSlotId: availableSlot.id,
         entryTime: new Date(),
         status: ParkingSessionStatus.ACTIVE,
@@ -169,62 +180,49 @@ export class VehicleDetectionController {
         notificationSent: !!vehicle.userId,
       });
     } else {
-      // Xe vãng lai - tìm hoặc tạo user Guest
-      const userRepo = AppDataSource.getRepository(User);
-      let guestUser = await userRepo.findOne({
-        where: { email: "guest@system.com" },
-      });
-
-      // Nếu chưa có user Guest, tìm user đầu tiên
-      if (!guestUser) {
-        const firstUser = await userRepo.findOne({
-          order: { id: "ASC" },
+      // Xe vãng lai - không cần tạo vehicle, chỉ lưu biển số
+      // Tạo parking session với vehicleId = null và lưu licensePlate
+      try {
+        const newSession = sessionRepo.create({
+          vehicleId: null, // Xe vãng lai không có vehicleId
+          licensePlate: licensePlate, // Lưu biển số để tính tiền khi ra
+          parkingSlotId: availableSlot.id,
+          entryTime: new Date(),
+          status: ParkingSessionStatus.ACTIVE,
         });
-        if (!firstUser) {
+        
+        // Đảm bảo không set vehicle relation
+        newSession.vehicle = null;
+        
+        const savedSession = await sessionRepo.save(newSession);
+
+        // Cập nhật slot status
+        availableSlot.status = ParkingSlotStatus.OCCUPIED;
+        await slotRepo.save(availableSlot);
+
+        return res.json({
+          message: "Vehicle entry processed - Guest vehicle (pay by hour)",
+          isRegistered: false,
+          licensePlate,
+          parkingSession: savedSession,
+          slot: {
+            id: availableSlot.id,
+            slotCode: availableSlot.slotCode,
+          },
+          note: "This is a guest vehicle, will be charged by hour when exiting",
+        });
+      } catch (dbError: any) {
+        // Nếu lỗi về schema, hướng dẫn chạy migration
+        if (dbError.message && (dbError.message.includes("user_id") || dbError.message.includes("default value"))) {
+          console.error("Database schema error. Please run the SQL migration script:");
+          console.error("See fix_parking_session_schema.sql file");
           return res.status(500).json({
-            error: "No users found in system. Please create a user first.",
+            error: "Database schema needs to be updated. Please run the migration script: fix_parking_session_schema.sql",
+            details: dbError.message,
           });
         }
-        guestUser = firstUser;
+        throw dbError;
       }
-
-      // Tạo vehicle tạm cho xe vãng lai
-      const guestVehicle = vehicleRepo.create({
-        userId: guestUser.id,
-        licensePlate,
-        vehicleType: VehicleType.CAR, // Mặc định là car
-      });
-      const savedGuestVehicle = await vehicleRepo.save(guestVehicle);
-
-      // Tạo parking session
-      const newSession = sessionRepo.create({
-        vehicleId: savedGuestVehicle.id,
-        parkingSlotId: availableSlot.id,
-        entryTime: new Date(),
-        status: ParkingSessionStatus.ACTIVE,
-      });
-      const savedSession = await sessionRepo.save(newSession);
-
-      // Cập nhật slot status
-      availableSlot.status = ParkingSlotStatus.OCCUPIED;
-      await slotRepo.save(availableSlot);
-
-      return res.json({
-        message: "Vehicle entry processed - Guest vehicle",
-        isRegistered: false,
-        licensePlate,
-        vehicle: {
-          id: savedGuestVehicle.id,
-          licensePlate: savedGuestVehicle.licensePlate,
-          userId: savedGuestVehicle.userId,
-        },
-        parkingSession: savedSession,
-        slot: {
-          id: availableSlot.id,
-          slotCode: availableSlot.slotCode,
-        },
-        note: "This is a guest vehicle, automatically registered",
-      });
     }
   }
 
@@ -239,22 +237,28 @@ export class VehicleDetectionController {
     const sessionRepo = AppDataSource.getRepository(ParkingSession);
     const notificationRepo = AppDataSource.getRepository(Notification);
 
-    if (!vehicle) {
-      return res.status(404).json({
-        error: "Vehicle not found in database",
-        licensePlate,
-        note: "Cannot process exit for unregistered vehicle",
+    // Tìm session active với biển số này
+    // Nếu có vehicle thì tìm theo vehicleId, nếu không thì tìm theo licensePlate (xe vãng lai)
+    let activeSession = null;
+    if (vehicle) {
+      activeSession = await sessionRepo.findOne({
+        where: {
+          vehicleId: vehicle.id,
+          status: ParkingSessionStatus.ACTIVE,
+        },
+        relations: ["vehicle", "parkingSlot", "parkingSlot.parkingLot"],
+      });
+    } else {
+      // Tìm session của xe vãng lai theo licensePlate
+      activeSession = await sessionRepo.findOne({
+        where: {
+          licensePlate: licensePlate,
+          vehicleId: null, // Xe vãng lai
+          status: ParkingSessionStatus.ACTIVE,
+        },
+        relations: ["parkingSlot", "parkingSlot.parkingLot"],
       });
     }
-
-    // Tìm session active với biển số này
-    const activeSession = await sessionRepo.findOne({
-      where: {
-        vehicleId: vehicle.id,
-        status: ParkingSessionStatus.ACTIVE,
-      },
-      relations: ["vehicle", "parkingSlot", "parkingSlot.parkingLot"],
-    });
 
     if (!activeSession) {
       return res.status(404).json({
@@ -322,8 +326,8 @@ export class VehicleDetectionController {
       await slotRepo.save(parkingSlot);
     }
 
-    // Gửi thông báo cho user
-    if (vehicle.userId) {
+    // Gửi thông báo cho user (chỉ khi có vehicle đã đăng ký)
+    if (vehicle && vehicle.userId) {
       const notification = notificationRepo.create({
         userId: vehicle.userId,
         message: `Xe của bạn (${licensePlate}) đã ra khỏi bãi đỗ. Phí: ${totalFee.toLocaleString("vi-VN")} VNĐ`,
@@ -340,12 +344,13 @@ export class VehicleDetectionController {
 
     return res.json({
       message: "Vehicle exit processed successfully",
-      isRegistered: true,
-      vehicle: {
+      isRegistered: !!vehicle,
+      licensePlate: licensePlate,
+      vehicle: vehicle ? {
         id: vehicle.id,
         licensePlate: vehicle.licensePlate,
         userId: vehicle.userId,
-      },
+      } : null,
       parkingSession: updatedSession,
       feeDetails: {
         entryTime: entryTime,
@@ -357,7 +362,7 @@ export class VehicleDetectionController {
         feeBreakdown: feeBreakdown,
         totalFee: totalFee,
       },
-      notificationSent: !!vehicle.userId,
+      notificationSent: !!(vehicle && vehicle.userId),
     });
   }
 }

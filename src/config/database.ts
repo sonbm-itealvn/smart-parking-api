@@ -34,5 +34,5 @@ export const AppDataSource = new DataSource({
     UploadedImage,
   ],
   synchronize: true, // dev OK, prod nên false
-  logging: false,
+  logging: process.env.NODE_ENV === "development", // Bật logging trong dev để debug
 });
