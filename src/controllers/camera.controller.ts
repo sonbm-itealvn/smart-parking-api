@@ -1,8 +1,11 @@
 import { Request, Response } from "express";
 import { AppDataSource } from "../config/database";
 import { Camera } from "../entity/Camera";
+import { Vehicle } from "../entity/Vehicle";
+import { ParkingSession, ParkingSessionStatus } from "../entity/ParkingSession";
 import axios from "axios";
 import { fastAPIService } from "../services/fastapi.service";
+import { VehicleDetectionController } from "./vehicle-detection.controller";
 import * as turf from "@turf/turf";
 
 export class CameraController {
@@ -480,6 +483,154 @@ export class CameraController {
     } catch (error: any) {
       console.error("Error in matchVehiclesToSlots:", error);
       throw error;
+    }
+  }
+
+  /**
+   * POST /api/cameras/:id/process-vehicle
+   * Detect biển số từ camera và tự động quyết định RA/VÀO
+   * Luồng: Camera FE → Detect biển số → Backend tự động quyết định RA/VÀO → DB
+   * Logic: 
+   * - Nếu KHÔNG có bản ghi IN (active session) → tự động tạo bản ghi VÀO
+   * - Nếu ĐÃ CÓ bản ghi IN (active session) → tự động đánh dấu RA + tính tiền
+   */
+  static async processVehicleFromCamera(req: Request, res: Response) {
+    try {
+      const id = parseInt(req.params.id);
+      const { parkingLotId, slotId } = req.body;
+
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid camera ID" });
+      }
+
+      // Lấy thông tin camera
+      const repo = AppDataSource.getRepository(Camera);
+      const camera = await repo.findOne({
+        where: { id },
+        relations: ["parkingLot"],
+      });
+
+      if (!camera) {
+        return res.status(404).json({ error: "Camera not found" });
+      }
+
+      if (camera.status !== "active") {
+        return res.status(400).json({ 
+          error: `Camera is not active (status: ${camera.status})` 
+        });
+      }
+
+      // Lấy parkingLotId từ camera hoặc request body
+      const finalParkingLotId = parkingLotId 
+        ? parseInt(parkingLotId) 
+        : (camera.parkingLotId || undefined);
+
+      if (!finalParkingLotId) {
+        return res.status(400).json({ 
+          error: "parkingLotId is required. Either set it in camera or provide in request body." 
+        });
+      }
+
+      // Bước 1: Fetch frame/image từ camera stream
+      let imageBuffer: Buffer;
+      try {
+        if (camera.cameraType === "http" || camera.streamUrl.startsWith("http")) {
+          const response = await axios.get(camera.streamUrl, {
+            responseType: "arraybuffer",
+            timeout: 10000,
+          });
+          imageBuffer = Buffer.from(response.data);
+        } else {
+          return res.status(400).json({ 
+            error: `Camera type ${camera.cameraType} requires HTTP snapshot URL. Please use HTTP camera or provide snapshot URL.` 
+          });
+        }
+      } catch (error: any) {
+        console.error("Error fetching frame from camera:", error.message);
+        return res.status(500).json({ 
+          error: `Failed to fetch frame from camera: ${error.message}` 
+        });
+      }
+
+      // Bước 2: Gọi FastAPI để detect license plate
+      let licensePlate: string | null = null;
+      try {
+        const result = await fastAPIService.detectLicensePlate(
+          imageBuffer,
+          `camera-${camera.id}-frame.jpg`
+        );
+        licensePlate = result.licensePlate || null;
+      } catch (error: any) {
+        console.error("Error detecting license plate:", error.message);
+        return res.status(500).json({ 
+          error: `Failed to detect license plate: ${error.message}` 
+        });
+      }
+
+      if (!licensePlate) {
+        return res.status(400).json({ 
+          error: "Could not detect license plate from camera frame" 
+        });
+      }
+
+      // Bước 3: Kiểm tra xem có active session không để tự động quyết định VÀO/RA
+      // Logic này giống với logic trong VehicleDetectionController để đảm bảo nhất quán
+      const vehicleRepo = AppDataSource.getRepository(Vehicle);
+      const sessionRepo = AppDataSource.getRepository(ParkingSession);
+      
+      // Tìm vehicle trong database (có thể là xe đã đăng ký hoặc xe vãng lai)
+      const vehicle = await vehicleRepo.findOne({
+        where: { licensePlate },
+        relations: ["user"],
+      });
+
+      // Kiểm tra active session - xử lý cả xe đã đăng ký và xe vãng lai
+      // Logic này giống với VehicleDetectionController.handleVehicleEntry
+      let activeSession = null;
+      if (vehicle) {
+        // Xe đã đăng ký: tìm session theo vehicleId
+        activeSession = await sessionRepo.findOne({
+          where: {
+            vehicleId: vehicle.id,
+            status: ParkingSessionStatus.ACTIVE,
+          },
+        });
+      } else {
+        // Xe vãng lai: tìm session theo licensePlate với vehicleId = null
+        activeSession = await sessionRepo.findOne({
+          where: {
+            licensePlate: licensePlate,
+            vehicleId: null, // Xe vãng lai không có vehicleId
+            status: ParkingSessionStatus.ACTIVE,
+          },
+        });
+      }
+
+      // Bước 4: Tự động quyết định VÀO/RA dựa trên active session
+      // Nếu KHÔNG có active session → VÀO (flag = 0)
+      // Nếu CÓ active session → RA (flag = 1)
+      const flag = activeSession ? 1 : 0;
+
+      // Bước 5: Tạo request object để gọi VehicleDetectionController
+      // VehicleDetectionController sẽ xử lý:
+      // - Xe đã đăng ký: tạo session với vehicleId
+      // - Xe vãng lai: tạo session với vehicleId = null và lưu licensePlate
+      const vehicleDetectionReq = {
+        body: {
+          licensePlate,
+          flag,
+          parkingLotId: finalParkingLotId,
+          slotId: slotId ? parseInt(slotId) : undefined,
+          image: imageBuffer.toString("base64"), // Optional: gửi ảnh dưới dạng base64
+        },
+      } as Request;
+
+      // Bước 6: Gọi VehicleDetectionController để xử lý RA/VÀO
+      // Method này sẽ gọi handleVehicleEntry (xử lý cả xe vãng lai) hoặc handleVehicleExit
+      await VehicleDetectionController.handleVehicleDetection(vehicleDetectionReq, res);
+    } catch (error: any) {
+      console.error("Error in processVehicleFromCamera:", error);
+      return res.status(500).json({ error: error.message });
     }
   }
 }

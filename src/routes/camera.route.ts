@@ -255,5 +255,87 @@ router.post("/:id/detect-license-plate", authenticateToken, CameraController.det
  */
 router.post("/:id/detect-parking-space", authenticateToken, CameraController.detectParkingSpaceFromCamera);
 
+/**
+ * @swagger
+ * /api/cameras/{id}/process-vehicle:
+ *   post:
+ *     summary: Detect biển số từ camera và tự động quyết định RA/VÀO
+ *     description: |
+ *       Luồng hoạt động tự động:
+ *       1. Lấy frame từ camera stream
+ *       2. Gọi FastAPI để detect biển số xe
+ *       3. Backend tự động kiểm tra active session:
+ *          - Nếu KHÔNG có bản ghi IN (active session) → tự động tạo bản ghi VÀO
+ *          - Nếu ĐÃ CÓ bản ghi IN (active session) → tự động đánh dấu RA + tính tiền
+ *       4. Tạo/cập nhật parking session và lưu vào DB
+ *       5. Cập nhật slot status
+ *       6. Gửi notification cho user (nếu có)
+ *     tags: [Cameras]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của camera
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               parkingLotId:
+ *                 type: integer
+ *                 example: 1
+ *                 description: ID của bãi đỗ xe (nếu camera chưa có parkingLotId)
+ *               slotId:
+ *                 type: integer
+ *                 example: 1
+ *                 description: ID của slot (nếu FastAPI detect được, optional)
+ *     responses:
+ *       200:
+ *         description: Xử lý thành công (VÀO hoặc RA)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               oneOf:
+ *                 - type: object
+ *                   description: Response khi xe VÀO
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Vehicle entry processed successfully"
+ *                     isRegistered:
+ *                       type: boolean
+ *                     vehicle:
+ *                       type: object
+ *                     parkingSession:
+ *                       type: object
+ *                     slot:
+ *                       type: object
+ *                 - type: object
+ *                   description: Response khi xe RA
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Vehicle exit processed successfully"
+ *                     licensePlate:
+ *                       type: string
+ *                     parkingSession:
+ *                       type: object
+ *                     feeDetails:
+ *                       type: object
+ *       400:
+ *         description: Camera không active, không detect được biển số, hoặc dữ liệu không hợp lệ
+ *       404:
+ *         description: Camera không tồn tại hoặc không tìm thấy slot trống (khi VÀO)
+ *       500:
+ *         description: Lỗi server hoặc FastAPI
+ */
+router.post("/:id/process-vehicle", authenticateToken, CameraController.processVehicleFromCamera);
+
 export default router;
 
