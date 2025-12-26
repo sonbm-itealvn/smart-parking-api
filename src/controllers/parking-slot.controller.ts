@@ -17,8 +17,19 @@ export class ParkingSlotController {
   static async getAll(req: Request, res: Response) {
     try {
       const repo = AppDataSource.getRepository(ParkingSlot);
+      const parkingLotId = req.query.parkingLotId 
+        ? parseInt(req.query.parkingLotId as string) 
+        : undefined;
+
+      const where: any = {};
+      if (parkingLotId) {
+        where.parkingLotId = parkingLotId;
+      }
+
       const parkingSlots = await repo.find({
+        where,
         relations: ["parkingLot", "parkingSessions"],
+        order: { id: "ASC" },
       });
       return res.json(parkingSlots);
     } catch (error: any) {

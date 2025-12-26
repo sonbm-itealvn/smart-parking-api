@@ -105,34 +105,54 @@ export class VehicleDetectionController {
       });
     }
 
-    // Tìm slot trống
+    // Tìm slot trống - BẮT BUỘC phải có parkingLotId
+    if (!parkingLotId) {
+      return res.status(400).json({ 
+        error: "parkingLotId is required to assign vehicle to a specific parking lot" 
+      });
+    }
+
     let availableSlot: ParkingSlot | null = null;
 
     if (slotId) {
-      // Nếu FastAPI đã detect được slot
+      // Nếu FastAPI đã detect được slot - kiểm tra slot có thuộc đúng parkingLotId không
       availableSlot = await slotRepo.findOne({
-        where: { id: slotId, status: ParkingSlotStatus.AVAILABLE },
-        relations: ["parkingLot"],
-      });
-    } else if (parkingLotId) {
-      // Tìm slot trống đầu tiên trong bãi đỗ
-      availableSlot = await slotRepo.findOne({
-        where: {
-          parkingLotId,
-          status: ParkingSlotStatus.AVAILABLE,
+        where: { 
+          id: slotId, 
+          parkingLotId: parkingLotId, // Đảm bảo slot thuộc đúng bãi đỗ
+          status: ParkingSlotStatus.AVAILABLE 
         },
         relations: ["parkingLot"],
       });
+
+      if (!availableSlot) {
+        return res.status(404).json({ 
+          error: `Slot ${slotId} not found or not available in parking lot ${parkingLotId}` 
+        });
+      }
     } else {
-      // Tìm slot trống bất kỳ
+      // Tìm slot trống đầu tiên trong bãi đỗ được chỉ định
       availableSlot = await slotRepo.findOne({
-        where: { status: ParkingSlotStatus.AVAILABLE },
+        where: {
+          parkingLotId: parkingLotId,
+          status: ParkingSlotStatus.AVAILABLE,
+        },
         relations: ["parkingLot"],
+        order: { id: "ASC" }, // Lấy slot đầu tiên để có thứ tự nhất quán
       });
     }
 
     if (!availableSlot) {
-      return res.status(404).json({ error: "No available parking slot found" });
+      return res.status(404).json({ 
+        error: `No available parking slot found in parking lot ${parkingLotId}` 
+      });
+    }
+
+    // Đảm bảo slot thuộc đúng bãi đỗ (double check)
+    if (availableSlot.parkingLotId !== parkingLotId) {
+      return res.status(400).json({ 
+        error: `Slot ${availableSlot.id} does not belong to parking lot ${parkingLotId}` 
+      });
     }
 
     // Xử lý vehicle

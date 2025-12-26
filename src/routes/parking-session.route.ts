@@ -28,10 +28,22 @@ router.post("/", requireAdmin, ParkingSessionController.create);
  * @swagger
  * /api/parking-sessions:
  *   get:
- *     summary: Lấy tất cả phiên đỗ xe
+ *     summary: Lấy tất cả phiên đỗ xe (có thể filter theo parkingLotId và status)
  *     tags: [Parking Sessions]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: parkingLotId
+ *         schema:
+ *           type: integer
+ *         description: Filter theo ID bãi đỗ xe
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, completed, cancelled]
+ *         description: Filter theo trạng thái session
  *     responses:
  *       200:
  *         description: Danh sách phiên đỗ xe

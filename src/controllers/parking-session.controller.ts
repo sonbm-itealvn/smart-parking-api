@@ -7,9 +7,53 @@ export class ParkingSessionController {
   static async create(req: Request, res: Response) {
     try {
       const repo = AppDataSource.getRepository(ParkingSession);
+      const slotRepo = AppDataSource.getRepository(ParkingSlot);
+      
+      const { parkingSlotId, parkingLotId } = req.body;
+
+      // Validate parkingSlotId
+      if (!parkingSlotId) {
+        return res.status(400).json({ error: "parkingSlotId is required" });
+      }
+
+      // Kiểm tra slot có tồn tại không
+      const slot = await slotRepo.findOne({
+        where: { id: parkingSlotId },
+        relations: ["parkingLot"],
+      });
+
+      if (!slot) {
+        return res.status(404).json({ error: "Parking slot not found" });
+      }
+
+      // Nếu có parkingLotId, kiểm tra slot có thuộc đúng bãi đỗ không
+      if (parkingLotId && slot.parkingLotId !== parkingLotId) {
+        return res.status(400).json({ 
+          error: `Parking slot ${parkingSlotId} does not belong to parking lot ${parkingLotId}` 
+        });
+      }
+
+      // Kiểm tra slot có available không
+      if (slot.status !== ParkingSlotStatus.AVAILABLE) {
+        return res.status(400).json({ 
+          error: `Parking slot ${parkingSlotId} is not available (status: ${slot.status})` 
+        });
+      }
+
       const parkingSession = repo.create(req.body);
       const savedParkingSession = await repo.save(parkingSession);
-      return res.status(201).json(savedParkingSession);
+
+      // Cập nhật slot status thành occupied
+      slot.status = ParkingSlotStatus.OCCUPIED;
+      await slotRepo.save(slot);
+
+      // Reload với relations
+      const sessionWithRelations = await repo.findOne({
+        where: { id: savedParkingSession.id },
+        relations: ["vehicle", "parkingSlot", "parkingSlot.parkingLot", "payments"],
+      });
+
+      return res.status(201).json(sessionWithRelations);
     } catch (error: any) {
       return res.status(400).json({ error: error.message });
     }
@@ -18,10 +62,34 @@ export class ParkingSessionController {
   static async getAll(req: Request, res: Response) {
     try {
       const repo = AppDataSource.getRepository(ParkingSession);
-      const parkingSessions = await repo.find({
-        relations: ["vehicle", "parkingSlot", "payments"],
-        order: { entryTime: "DESC" },
-      });
+      const parkingLotId = req.query.parkingLotId 
+        ? parseInt(req.query.parkingLotId as string) 
+        : undefined;
+      const status = req.query.status as string | undefined;
+
+      const queryBuilder = repo.createQueryBuilder("session")
+        .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+        .leftJoinAndSelect("session.payments", "payments");
+
+      // Filter theo parkingLotId nếu có
+      if (parkingLotId) {
+        queryBuilder.where("parkingLot.id = :parkingLotId", { parkingLotId });
+      }
+
+      // Filter theo status nếu có
+      if (status) {
+        if (parkingLotId) {
+          queryBuilder.andWhere("session.status = :status", { status });
+        } else {
+          queryBuilder.where("session.status = :status", { status });
+        }
+      }
+
+      queryBuilder.orderBy("session.entryTime", "DESC");
+
+      const parkingSessions = await queryBuilder.getMany();
       return res.json(parkingSessions);
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

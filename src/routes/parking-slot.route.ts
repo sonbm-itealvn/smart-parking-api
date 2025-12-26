@@ -28,10 +28,16 @@ router.post("/", requireAdmin, ParkingSlotController.create);
  * @swagger
  * /api/parking-slots:
  *   get:
- *     summary: Lấy tất cả vị trí đỗ xe
+ *     summary: Lấy tất cả vị trí đỗ xe (có thể filter theo parkingLotId)
  *     tags: [Parking Slots]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: parkingLotId
+ *         schema:
+ *           type: integer
+ *         description: Filter theo ID bãi đỗ xe
  *     responses:
  *       200:
  *         description: Danh sách vị trí đỗ xe

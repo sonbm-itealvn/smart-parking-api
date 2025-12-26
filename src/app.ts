@@ -12,6 +12,7 @@ import paymentRoutes from "./routes/payment.route";
 import vehicleDetectionRoutes from "./routes/vehicle-detection.route";
 import fastapiRoutes from "./routes/fastapi.route";
 import uploadImageRoutes from "./routes/uploadImage.route";
+import cameraRoutes from "./routes/camera.route";
 import { authenticateToken } from "./middleware/auth.middleware";
 import { corsMiddleware } from "./config/cors";
 import { swaggerSpec } from "./config/swagger";
@@ -50,6 +51,7 @@ app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/parking-sessions", authenticateToken, parkingSessionRoutes);
 app.use("/api/payments", authenticateToken, paymentRoutes);
 app.use("/api/upload-images", authenticateToken, uploadImageRoutes);
+app.use("/api/cameras", authenticateToken, cameraRoutes);
 app.use("/api", fastapiRoutes); // FastAPI integration endpoints
 
 /**

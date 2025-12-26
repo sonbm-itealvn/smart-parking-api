@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { PaymentController } from "../controllers/payment.controller";
 import { requireAdmin } from "../middleware/role.middleware";
+import { authenticateToken } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -113,5 +114,64 @@ router.put("/:id", requireAdmin, PaymentController.update);
  *         description: Không có quyền truy cập
  */
 router.delete("/:id", requireAdmin, PaymentController.delete);
+
+/**
+ * @swagger
+ * /api/payments/revenue/daily:
+ *   get:
+ *     summary: Tính tổng doanh thu trong ngày
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: date
+ *         schema:
+ *           type: string
+ *           format: date
+ *           example: "2025-01-15"
+ *         description: Ngày cần tính doanh thu (YYYY-MM-DD). Mặc định là hôm nay
+ *       - in: query
+ *         name: parkingLotId
+ *         schema:
+ *           type: integer
+ *         description: ID của bãi đỗ xe (optional). Nếu không có thì tính tổng tất cả bãi đỗ
+ *     responses:
+ *       200:
+ *         description: Tổng doanh thu trong ngày
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 date:
+ *                   type: string
+ *                   format: date
+ *                   example: "2025-01-15"
+ *                 parkingLot:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     location:
+ *                       type: string
+ *                 totalRevenue:
+ *                   type: number
+ *                   description: Tổng doanh thu từ parking_sessions.fee (chỉ tính các session đã completed trong ngày)
+ *                   example: 500000
+ *                 totalSessions:
+ *                   type: integer
+ *                   description: Tổng số session đã completed trong ngày
+ *                   example: 10
+ *                 currency:
+ *                   type: string
+ *                   example: "VND"
+ *       400:
+ *         description: Date format không hợp lệ hoặc parkingLotId không hợp lệ
+ */
+router.get("/revenue/daily", authenticateToken, PaymentController.getDailyRevenue);
 
 export default router;

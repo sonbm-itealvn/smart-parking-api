@@ -194,6 +194,29 @@ const swaggerDefinition: SwaggerDefinition = {
           updatedAt: { type: "string", format: "date-time" },
         },
       },
+      Camera: {
+        type: "object",
+        properties: {
+          id: { type: "integer", format: "int64" },
+          name: { type: "string", description: "Tên camera" },
+          streamUrl: { type: "string", description: "URL stream của camera (RTSP, HTTP, hoặc webcam)" },
+          cameraType: { 
+            type: "string", 
+            enum: ["rtsp", "http", "webcam"],
+            description: "Loại camera stream" 
+          },
+          status: { 
+            type: "string", 
+            enum: ["active", "inactive", "maintenance"],
+            description: "Trạng thái camera" 
+          },
+          parkingLotId: { type: "integer", format: "int64", nullable: true, description: "ID của bãi đỗ xe" },
+          description: { type: "string", nullable: true, description: "Mô tả camera" },
+          location: { type: "string", nullable: true, description: "Vị trí camera" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
     },
   },
   tags: [
@@ -240,6 +263,10 @@ const swaggerDefinition: SwaggerDefinition = {
     {
       name: "Upload Images",
       description: "Image upload and management endpoints",
+    },
+    {
+      name: "Cameras",
+      description: "Camera management and stream endpoints",
     },
   ],
 };

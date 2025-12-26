@@ -39,7 +39,8 @@ const router = Router();
  *               parkingLotId:
  *                 type: integer
  *                 example: 1
- *                 description: ID của bãi đỗ xe
+ *                 required: true
+ *                 description: ID của bãi đỗ xe (BẮT BUỘC để đảm bảo xe được gán đúng bãi đỗ)
  *               image:
  *                 type: string
  *                 description: Ảnh xe dưới dạng base64 (optional)

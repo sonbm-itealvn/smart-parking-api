@@ -11,6 +11,7 @@ import { ParkingSession } from "../entity/ParkingSession";
 import { Payment } from "../entity/Payment";
 import { RefreshToken } from "../entity/RefreshToken";
 import { UploadedImage } from "../entity/UploadedImage";
+import { Camera } from "../entity/Camera";
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ export const AppDataSource = new DataSource({
     Payment,
     RefreshToken,
     UploadedImage,
+    Camera,
   ],
   synchronize: true, // dev OK, prod nên false
   logging: process.env.NODE_ENV === "development", // Bật logging trong dev để debug
