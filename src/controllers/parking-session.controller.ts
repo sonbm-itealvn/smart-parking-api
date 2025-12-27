@@ -67,20 +67,37 @@ export class ParkingSessionController {
         : undefined;
       const status = req.query.status as string | undefined;
 
+      // Get userId from authenticated user (if available)
+      const authReq = req as any;
+      const userId = authReq.user?.userId;
+      const userRoleId = authReq.user?.roleId;
+      const isAdmin = userRoleId === 2; // Admin has roleId = 2
+
       const queryBuilder = repo.createQueryBuilder("session")
         .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("vehicle.user", "user")
         .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
         .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
         .leftJoinAndSelect("session.payments", "payments");
 
+      // Nếu user không phải admin, chỉ lấy sessions của chính họ
+      if (userId && !isAdmin) {
+        queryBuilder.where("user.id = :userId", { userId });
+      }
+
       // Filter theo parkingLotId nếu có
       if (parkingLotId) {
-        queryBuilder.where("parkingLot.id = :parkingLotId", { parkingLotId });
+        if (userId && !isAdmin) {
+          queryBuilder.andWhere("parkingLot.id = :parkingLotId", { parkingLotId });
+        } else {
+          queryBuilder.where("parkingLot.id = :parkingLotId", { parkingLotId });
+        }
       }
 
       // Filter theo status nếu có
       if (status) {
-        if (parkingLotId) {
+        const hasExistingWhere = (userId && !isAdmin) || parkingLotId;
+        if (hasExistingWhere) {
           queryBuilder.andWhere("session.status = :status", { status });
         } else {
           queryBuilder.where("session.status = :status", { status });

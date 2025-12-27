@@ -14,43 +14,58 @@ const JWT_REFRESH_EXPIRES_IN: StringValue = (process.env.JWT_REFRESH_EXPIRES_IN 
 
 // Helper function to generate tokens
 const generateTokens = async (user: User) => {
-  const accessTokenOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
-  const accessToken = jwt.sign(
-    {
-      userId: user.id,
-      email: user.email,
-      roleId: user.roleId,
-      roleName: user.role?.name,
-    },
-    JWT_SECRET,
-    accessTokenOptions
-  );
+  try {
+    // Validate user data
+    if (!user || !user.id || !user.email) {
+      throw new Error("Invalid user data for token generation");
+    }
 
-  const refreshTokenOptions: SignOptions = { expiresIn: JWT_REFRESH_EXPIRES_IN };
-  const refreshToken = jwt.sign(
-    {
-      userId: user.id,
-      email: user.email,
-    },
-    JWT_REFRESH_SECRET,
-    refreshTokenOptions
-  );
+    const accessTokenOptions: SignOptions = { expiresIn: JWT_EXPIRES_IN };
+    const accessToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        roleName: user.role?.name || null,
+      },
+      JWT_SECRET,
+      accessTokenOptions
+    );
 
-  // Calculate expiration date
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
+    const refreshTokenOptions: SignOptions = { expiresIn: JWT_REFRESH_EXPIRES_IN };
+    const refreshToken = jwt.sign(
+      {
+        userId: user.id,
+        email: user.email,
+      },
+      JWT_REFRESH_SECRET,
+      refreshTokenOptions
+    );
 
-  // Save refresh token to database
-  const refreshTokenRepo = AppDataSource.getRepository(RefreshToken);
-  const refreshTokenEntity = refreshTokenRepo.create({
-    token: refreshToken,
-    userId: user.id,
-    expiresAt,
-    isRevoked: false,
-  });
-  await refreshTokenRepo.save(refreshTokenEntity);
+    // Calculate expiration date
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
 
-  return { accessToken, refreshToken };
+    // Save refresh token to database
+    try {
+      const refreshTokenRepo = AppDataSource.getRepository(RefreshToken);
+      const refreshTokenEntity = refreshTokenRepo.create({
+        token: refreshToken,
+        userId: user.id,
+        expiresAt,
+        isRevoked: false,
+      });
+      await refreshTokenRepo.save(refreshTokenEntity);
+    } catch (dbError: any) {
+      console.error("Error saving refresh token to database:", dbError);
+      // Continue even if saving refresh token fails, but log the error
+    }
+
+    return { accessToken, refreshToken };
+  } catch (error: any) {
+    console.error("Error in generateTokens:", error);
+    throw error;
+  }
 };
 
 export class AuthController {
@@ -81,13 +96,13 @@ export class AuthController {
       const saltRounds = 10;
       const passwordHash = await bcrypt.hash(password, saltRounds);
 
-      // Create user (default roleId = 2 for regular user if not provided)
-      // Note: roleId = 2 is ADMIN, other roleIds are regular users
+      // Create user (default roleId = 1 for regular USER if not provided)
+      // Note: roleId = 1 is USER, roleId = 2 is ADMIN
       const newUser = userRepo.create({
         fullName,
         email,
         passwordHash,
-        roleId: roleId || 2, // Default to roleId = 2 (ADMIN) if not provided
+        roleId: roleId || 1, // Default to roleId = 1 (USER) if not provided
       });
 
       const savedUser = await userRepo.save(newUser);
@@ -153,7 +168,20 @@ export class AuthController {
       }
 
       // Generate access token and refresh token
-      const { accessToken, refreshToken } = await generateTokens(user);
+      let accessToken: string;
+      let refreshToken: string;
+      
+      try {
+        const tokens = await generateTokens(user);
+        accessToken = tokens.accessToken;
+        refreshToken = tokens.refreshToken;
+      } catch (tokenError: any) {
+        console.error("Error generating tokens:", tokenError);
+        return res.status(500).json({ 
+          error: "Failed to generate tokens",
+          details: tokenError.message 
+        });
+      }
 
       // Return user data without password
       const { passwordHash: _, ...userWithoutPassword } = user;
@@ -165,6 +193,7 @@ export class AuthController {
         refreshToken,
       });
     } catch (error: any) {
+      console.error("Login error:", error);
       return res.status(500).json({ error: error.message });
     }
   }
