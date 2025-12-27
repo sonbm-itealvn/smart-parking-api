@@ -120,4 +120,79 @@ router.put("/:id", requireAdmin, ParkingSlotController.update);
  */
 router.delete("/:id", requireAdmin, ParkingSlotController.delete);
 
+/**
+ * @swagger
+ * /api/parking-slots/{id}/current-occupant:
+ *   get:
+ *     summary: Xem thông tin người đang đỗ tại vị trí này
+ *     tags: [Parking Slots]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID của vị trí đỗ xe
+ *     responses:
+ *       200:
+ *         description: Thông tin người đang đỗ (hoặc null nếu vị trí trống)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 parkingSlot:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     slotCode:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                 isOccupied:
+ *                   type: boolean
+ *                   description: Vị trí có đang được sử dụng không
+ *                 currentOccupant:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     session:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         entryTime:
+ *                           type: string
+ *                           format: date-time
+ *                         licensePlate:
+ *                           type: string
+ *                           nullable: true
+ *                     vehicle:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         licensePlate:
+ *                           type: string
+ *                         vehicleType:
+ *                           type: string
+ *                     user:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         fullName:
+ *                           type: string
+ *                         email:
+ *                           type: string
+ *       404:
+ *         description: Vị trí đỗ xe không tồn tại
+ */
+router.get("/:id/current-occupant", ParkingSlotController.getCurrentOccupant);
+
 export default router;
