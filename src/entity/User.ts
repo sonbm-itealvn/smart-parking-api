@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, DeleteDateColumn } from "typeorm";
 import { Role } from "./Role";
 import { Vehicle } from "./Vehicle";
 import { Notification } from "./Notification";
@@ -36,4 +36,7 @@ export class User {
 
   @OneToMany(() => Notification, (notification) => notification.user)
   notifications!: Notification[];
+
+  @DeleteDateColumn({ type: "timestamp", name: "deleted_at", nullable: true })
+  deletedAt!: Date | null;
 }

@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, OneToMany, JoinColumn, DeleteDateColumn } from "typeorm";
 import { User } from "./User";
 import { ParkingSession } from "./ParkingSession";
 
@@ -36,5 +36,8 @@ export class Vehicle {
 
   @OneToMany(() => ParkingSession, (session) => session.vehicle)
   parkingSessions!: ParkingSession[];
+
+  @DeleteDateColumn({ type: "timestamp", name: "deleted_at", nullable: true })
+  deletedAt!: Date | null;
 }
 

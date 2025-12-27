@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, DeleteDateColumn } from "typeorm";
 import { User } from "./User";
 
 @Entity("uploaded_images")
@@ -40,5 +40,8 @@ export class UploadedImage {
 
   @Column({ type: "timestamp", name: "updated_at", default: () => "CURRENT_TIMESTAMP", onUpdate: "CURRENT_TIMESTAMP" })
   updatedAt!: Date;
+
+  @DeleteDateColumn({ type: "timestamp", name: "deleted_at", nullable: true })
+  deletedAt!: Date | null;
 }
 

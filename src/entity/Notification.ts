@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, DeleteDateColumn } from "typeorm";
 import { User } from "./User";
 
 @Entity("notifications")
@@ -22,5 +22,8 @@ export class Notification {
 
   @Column({ type: "timestamp", name: "created_at", default: () => "CURRENT_TIMESTAMP" })
   createdAt!: Date;
+
+  @DeleteDateColumn({ type: "timestamp", name: "deleted_at", nullable: true })
+  deletedAt!: Date | null;
 }
 

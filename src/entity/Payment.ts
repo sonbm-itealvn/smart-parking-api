@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn } from "typeorm";
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne, JoinColumn, DeleteDateColumn } from "typeorm";
 import { ParkingSession } from "./ParkingSession";
 
 export enum PaymentMethod {
@@ -45,5 +45,8 @@ export class Payment {
     default: PaymentStatus.PENDING,
   })
   status!: PaymentStatus;
+
+  @DeleteDateColumn({ type: "timestamp", name: "deleted_at", nullable: true })
+  deletedAt!: Date | null;
 }
 

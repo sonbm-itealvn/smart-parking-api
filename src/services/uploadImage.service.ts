@@ -180,8 +180,8 @@ class UploadImageService {
         // Tiếp tục xóa record trong DB ngay cả khi xóa Cloudinary thất bại
       }
 
-      // Xóa record từ database
-      await repo.remove(image);
+      // Xóa record từ database (soft delete)
+      await repo.softDelete(image.id);
     } catch (error: any) {
       console.error("Error deleting image:", error);
       throw new Error(`Failed to delete image: ${error.message}`);

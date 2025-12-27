@@ -161,7 +161,7 @@ export class ParkingSessionController {
         return res.status(404).json({ error: "Parking session not found" });
       }
 
-      await repo.remove(parkingSession);
+      await repo.softDelete(parkingSession.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

@@ -76,7 +76,7 @@ export class PaymentController {
         return res.status(404).json({ error: "Payment not found" });
       }
 
-      await repo.remove(payment);
+      await repo.softDelete(payment.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

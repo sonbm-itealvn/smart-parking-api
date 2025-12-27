@@ -74,7 +74,7 @@ export class RoleController {
         return res.status(404).json({ error: "Role not found" });
       }
 
-      await repo.remove(role);
+      await repo.softDelete(role.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

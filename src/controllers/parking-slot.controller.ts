@@ -85,7 +85,7 @@ export class ParkingSlotController {
         return res.status(404).json({ error: "Parking slot not found" });
       }
 
-      await repo.remove(parkingSlot);
+      await repo.softDelete(parkingSlot.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

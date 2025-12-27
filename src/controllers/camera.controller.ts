@@ -222,7 +222,7 @@ export class CameraController {
         return res.status(404).json({ error: "Camera not found" });
       }
 
-      await repo.remove(camera);
+      await repo.softDelete(camera.id);
       return res.status(204).send();
     } catch (error: any) {
       console.error("Error in delete camera:", error);

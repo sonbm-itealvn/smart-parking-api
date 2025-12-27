@@ -74,7 +74,7 @@ export class UserController {
         return res.status(404).json({ error: "User not found" });
       }
 
-      await repo.remove(user);
+      await repo.softDelete(user.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });

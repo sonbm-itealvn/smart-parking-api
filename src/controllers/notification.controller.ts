@@ -93,7 +93,7 @@ export class NotificationController {
         return res.status(404).json({ error: "Notification not found" });
       }
 
-      await repo.remove(notification);
+      await repo.softDelete(notification.id);
       return res.status(204).send();
     } catch (error: any) {
       return res.status(500).json({ error: error.message });
