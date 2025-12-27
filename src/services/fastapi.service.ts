@@ -274,7 +274,6 @@ class FastAPIService {
         if (file.startsWith("http://") || file.startsWith("https://")) {
           // Là URL - fetch ảnh từ URL và gửi cho FastAPI
           try {
-            console.log(`[FastAPI Service] Fetching image from URL: ${file}`);
             const imageResponse = await axios.get(file, {
               responseType: "arraybuffer",
               timeout: 15000, // Tăng timeout lên 15s
@@ -286,7 +285,6 @@ class FastAPIService {
             }
             
             const imageBuffer = Buffer.from(imageResponse.data);
-            console.log(`[FastAPI Service] Successfully fetched image, size: ${imageBuffer.length} bytes`);
             formData.append("image", imageBuffer, fileName || "image.jpg");
           } catch (urlError: any) {
             console.error(`[FastAPI Service] Error fetching image from URL ${file}:`, {
@@ -308,18 +306,12 @@ class FastAPIService {
         formData.append("image", file, fileName || "image.jpg");
       }
 
-      console.log(`[FastAPI Service] Sending request to FastAPI: ${this.baseURL}/license-plate/detect`);
-      
       const response = await this.client.post("/license-plate/detect", formData, {
         headers: {
           ...formData.getHeaders(),
         },
         responseType: "arraybuffer", // Nhận binary data (có thể là PNG hoặc JSON)
       });
-
-      console.log(`[FastAPI Service] FastAPI response status: ${response.status}`);
-      console.log(`[FastAPI Service] Content-Type: ${response.headers["content-type"]}`);
-      console.log(`[FastAPI Service] All response headers:`, JSON.stringify(response.headers, null, 2));
 
       // Kiểm tra xem response là JSON hay binary image
       const contentType = response.headers["content-type"] || "";
@@ -331,28 +323,17 @@ class FastAPIService {
 
       if (isJsonResponse) {
         // FastAPI trả về JSON - parse từ body
-        console.log(`[FastAPI Service] FastAPI returned JSON response, parsing body...`);
         try {
           const responseBody = Buffer.from(response.data as ArrayBuffer).toString("utf-8");
           const jsonData = JSON.parse(responseBody);
           
-          console.log(`[FastAPI Service] JSON response body:`, JSON.stringify(jsonData, null, 2));
-          
-          // Thử nhiều field names phổ biến cho license plate trong JSON
-          // Log tất cả keys để debug
-          console.log(`[FastAPI Service] JSON keys:`, Object.keys(jsonData));
-          
           // Ưu tiên 1: Kiểm tra mảng plates (FastAPI trả về dạng {plates: ["G01 55055"]})
           if (jsonData.plates && Array.isArray(jsonData.plates) && jsonData.plates.length > 0) {
             licensePlate = jsonData.plates[0];
-            console.log(`[FastAPI Service] Found license plate in plates array: ${licensePlate}`);
           }
           // Ưu tiên 2: Kiểm tra details array (FastAPI trả về dạng {details: [{text: "G01 55055"}]})
           else if (jsonData.details && Array.isArray(jsonData.details) && jsonData.details.length > 0) {
             licensePlate = jsonData.details[0].text || jsonData.details[0].plate || null;
-            if (licensePlate) {
-              console.log(`[FastAPI Service] Found license plate in details array: ${licensePlate}`);
-            }
           }
           // Ưu tiên 3: Kiểm tra các field names phổ biến
           else {
@@ -388,18 +369,6 @@ class FastAPIService {
             }
           }
           
-          // Nếu vẫn null, log toàn bộ JSON để debug
-          if (!licensePlate) {
-            console.warn(`[FastAPI Service] License plate not found. Checked: plates array, details array, and common fields.`);
-            console.warn(`[FastAPI Service] JSON structure:`, {
-              hasPlates: !!jsonData.plates,
-              platesLength: jsonData.plates?.length || 0,
-              hasDetails: !!jsonData.details,
-              detailsLength: jsonData.details?.length || 0,
-              keys: Object.keys(jsonData)
-            });
-          }
-          
           // Lấy image từ JSON (có thể là base64 hoặc URL)
           if (jsonData.image) {
             // Nếu là base64 string
@@ -432,13 +401,8 @@ class FastAPIService {
             }
           } else {
             // Không có image trong JSON, tạo empty image
-            console.warn(`[FastAPI Service] No image found in JSON response`);
             imageBuffer = Buffer.from([]);
             finalContentType = "image/png";
-          }
-          
-          if (licensePlate) {
-            console.log(`[FastAPI Service] Found license plate in JSON body: ${licensePlate}`);
           }
         } catch (parseError: any) {
           console.error(`[FastAPI Service] Error parsing JSON response:`, parseError.message);
@@ -448,7 +412,6 @@ class FastAPIService {
         }
       } else {
         // FastAPI trả về binary image - lấy license plate từ header
-        console.log(`[FastAPI Service] FastAPI returned binary image, checking headers...`);
         imageBuffer = Buffer.from(response.data as ArrayBuffer);
         finalContentType = contentType || "image/png";
         
@@ -481,25 +444,12 @@ class FastAPIService {
                 licensePlate.toLowerCase() !== "none" &&
                 licensePlate !== "undefined" &&
                 licensePlate !== "N/A") {
-              console.log(`[FastAPI Service] Found license plate in header "${headerName}": ${licensePlate}`);
               break;
             } else {
               licensePlate = null;
             }
           }
         }
-      }
-
-      if (!licensePlate) {
-        console.warn(`[FastAPI Service] No license plate detected`);
-        if (isJsonResponse) {
-          console.warn(`[FastAPI Service] Checked JSON body but no license plate field found`);
-        } else {
-          console.warn(`[FastAPI Service] Checked response headers but no license plate header found`);
-          console.warn(`[FastAPI Service] Available headers:`, Object.keys(response.headers));
-        }
-      } else {
-        console.log(`[FastAPI Service] Detected license plate: ${licensePlate}`);
       }
 
       return {

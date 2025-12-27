@@ -543,7 +543,6 @@ export class CameraController {
       
       if (file) {
         // Có file upload, dùng buffer trực tiếp
-        console.log(`[Camera ${camera.id}] Using uploaded file: ${file.originalname}`);
         imageInput = file.buffer;
         fileName = file.originalname;
       }
@@ -557,7 +556,6 @@ export class CameraController {
         }
         imageUrl = imageUrlFromBody;
         imageInput = imageUrl;
-        console.log(`[Camera ${camera.id}] Using imageUrl from body: ${imageUrl}`);
       }
       // Ưu tiên 3: imageBase64 từ body
       else if (imageBase64 && typeof imageBase64 === "string") {
@@ -569,7 +567,6 @@ export class CameraController {
             `camera-${camera.id}`
           );
           imageInput = imageUrl;
-          console.log(`[Camera ${camera.id}] Using imageBase64, saved to: ${imageUrl}`);
         } catch (error: any) {
           console.error("Error saving base64 image:", error.message);
           return res.status(400).json({ 
@@ -596,7 +593,6 @@ export class CameraController {
               `camera-${camera.id}`
             );
             imageInput = imageUrl;
-            console.log(`[Camera ${camera.id}] Fetched from camera stream, saved to: ${imageUrl}`);
           } else if (camera.cameraType === "webcam") {
             // Nếu là webcam nhưng không có file/imageUrl/imageBase64, yêu cầu gửi
             return res.status(400).json({ 
@@ -618,41 +614,11 @@ export class CameraController {
       // Bước 2: Gọi FastAPI để detect license plate
       let licensePlate: string | null = null;
       try {
-        // Gửi imageInput cho FastAPI (có thể là buffer hoặc URL)
-        if (Buffer.isBuffer(imageInput)) {
-          console.log(`[Camera ${camera.id}] Sending image buffer to FastAPI (${imageInput.length} bytes)`);
-        } else {
-          console.log(`[Camera ${camera.id}] Sending image URL to FastAPI: ${imageInput}`);
-          
-          // Kiểm tra URL có thể truy cập được không (optional check, chỉ khi là URL)
-          try {
-            const urlCheck = await axios.head(imageInput, { timeout: 5000 });
-            console.log(`[Camera ${camera.id}] Image URL is accessible, status: ${urlCheck.status}`);
-          } catch (urlError: any) {
-            console.warn(`[Camera ${camera.id}] Warning: Could not verify URL accessibility: ${urlError.message}`);
-            // Không fail ngay, vẫn thử gửi cho FastAPI
-          }
-        }
-
         // Gửi imageInput cho FastAPI (buffer hoặc URL)
-        console.log(`[Camera ${camera.id}] Calling FastAPI detectLicensePlate with:`, {
-          type: Buffer.isBuffer(imageInput) ? "Buffer" : "URL",
-          value: Buffer.isBuffer(imageInput) ? `Buffer(${imageInput.length} bytes)` : imageInput,
-          fileName: fileName
-        });
-        
         const result = await fastAPIService.detectLicensePlate(
           imageInput,
           fileName
         );
-        
-        console.log(`[Camera ${camera.id}] FastAPI response received:`, {
-          hasImage: !!result.image,
-          imageSize: result.image ? result.image.length : 0,
-          contentType: result.contentType,
-          licensePlate: result.licensePlate || 'null',
-          licensePlateType: typeof result.licensePlate
-        });
         
         licensePlate = result.licensePlate || null;
         
@@ -684,10 +650,6 @@ export class CameraController {
       }
 
       if (!licensePlate) {
-        const imageInfo = Buffer.isBuffer(imageInput) 
-          ? `Buffer(${imageInput.length} bytes)` 
-          : imageInput;
-        console.warn(`[Camera ${camera.id}] FastAPI did not detect license plate from image: ${imageInfo}`);
         return res.status(400).json({ 
           error: "Could not detect license plate from camera frame",
           imageUrl: imageUrl || (typeof imageInput === "string" ? imageInput : undefined),
@@ -759,7 +721,6 @@ export class CameraController {
           }
           
           finalSlotId = parsedSlotId;
-          console.log(`[Camera ${camera.id}] Validated slot ${finalSlotId} belongs to parking lot ${finalParkingLotId}`);
         }
       }
       
