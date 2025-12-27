@@ -13,6 +13,15 @@ export class ParkingLot {
   @Column({ type: "varchar", length: 255 })
   location!: string;
 
+  @Column({ type: "varchar", length: 500, nullable: true })
+  map!: string | null;
+
+  @Column({ type: "int", nullable: true, name: "map_width" })
+  mapWidth!: number | null;
+
+  @Column({ type: "int", nullable: true, name: "map_height" })
+  mapHeight!: number | null;
+
   @Column({ type: "int", name: "total_slots" })
   totalSlots!: number;
 
