@@ -3,6 +3,7 @@ import { AppDataSource } from "../config/database";
 import { Camera } from "../entity/Camera";
 import { Vehicle } from "../entity/Vehicle";
 import { ParkingSession, ParkingSessionStatus } from "../entity/ParkingSession";
+import { ParkingSlot } from "../entity/ParkingSlot";
 import axios from "axios";
 import { fastAPIService } from "../services/fastapi.service";
 import { VehicleDetectionController } from "./vehicle-detection.controller";
@@ -497,7 +498,7 @@ export class CameraController {
   static async processVehicleFromCamera(req: Request, res: Response) {
     try {
       const id = parseInt(req.params.id);
-      const { parkingLotId, slotId } = req.body;
+      const { parkingLotId, slotId, imageUrl: imageUrlFromBody, imageBase64 } = req.body;
 
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid camera ID" });
@@ -531,45 +532,166 @@ export class CameraController {
         });
       }
 
-      // Bước 1: Fetch frame/image từ camera stream
-      let imageBuffer: Buffer;
-      try {
-        if (camera.cameraType === "http" || camera.streamUrl.startsWith("http")) {
-          const response = await axios.get(camera.streamUrl, {
-            responseType: "arraybuffer",
-            timeout: 10000,
-          });
-          imageBuffer = Buffer.from(response.data);
-        } else {
+      // Bước 1: Lấy image input từ FE (ưu tiên file upload > imageUrl > imageBase64 > camera stream)
+      let imageInput: string | Buffer;
+      let imageUrl: string;
+      let fileName = `camera-${camera.id}-frame.jpg`;
+      
+      // Ưu tiên 1: File upload (multipart/form-data)
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      const file = files?.image?.[0] || files?.file?.[0];
+      
+      if (file) {
+        // Có file upload, dùng buffer trực tiếp
+        console.log(`[Camera ${camera.id}] Using uploaded file: ${file.originalname}`);
+        imageInput = file.buffer;
+        fileName = file.originalname;
+      }
+      // Ưu tiên 2: imageUrl từ body
+      else if (imageUrlFromBody && typeof imageUrlFromBody === "string") {
+        // Validate URL format
+        if (!imageUrlFromBody.startsWith("http://") && !imageUrlFromBody.startsWith("https://")) {
           return res.status(400).json({ 
-            error: `Camera type ${camera.cameraType} requires HTTP snapshot URL. Please use HTTP camera or provide snapshot URL.` 
+            error: "imageUrl must be a valid HTTP/HTTPS URL" 
           });
         }
-      } catch (error: any) {
-        console.error("Error fetching frame from camera:", error.message);
-        return res.status(500).json({ 
-          error: `Failed to fetch frame from camera: ${error.message}` 
-        });
+        imageUrl = imageUrlFromBody;
+        imageInput = imageUrl;
+        console.log(`[Camera ${camera.id}] Using imageUrl from body: ${imageUrl}`);
+      }
+      // Ưu tiên 3: imageBase64 từ body
+      else if (imageBase64 && typeof imageBase64 === "string") {
+        try {
+          // Lưu ảnh từ base64 vào disk và lấy URL
+          const { ImageStorageUtil } = await import("../utils/image-storage.util");
+          imageUrl = ImageStorageUtil.saveBase64Image(
+            imageBase64,
+            `camera-${camera.id}`
+          );
+          imageInput = imageUrl;
+          console.log(`[Camera ${camera.id}] Using imageBase64, saved to: ${imageUrl}`);
+        } catch (error: any) {
+          console.error("Error saving base64 image:", error.message);
+          return res.status(400).json({ 
+            error: `Invalid base64 image format: ${error.message}` 
+          });
+        }
+      }
+      // Ưu tiên 4: Fetch từ camera stream (cho RTSP/HTTP camera)
+      else {
+        try {
+          if (camera.cameraType === "http" || camera.streamUrl.startsWith("http")) {
+            const response = await axios.get(camera.streamUrl, {
+              responseType: "arraybuffer",
+              timeout: 10000,
+            });
+            const imageBuffer = Buffer.from(response.data);
+            
+            // Lưu ảnh từ stream vào disk và lấy URL
+            const { ImageStorageUtil } = await import("../utils/image-storage.util");
+            // Tạo base64 từ buffer để lưu
+            const base64String = imageBuffer.toString("base64");
+            imageUrl = ImageStorageUtil.saveBase64Image(
+              `data:image/jpeg;base64,${base64String}`,
+              `camera-${camera.id}`
+            );
+            imageInput = imageUrl;
+            console.log(`[Camera ${camera.id}] Fetched from camera stream, saved to: ${imageUrl}`);
+          } else if (camera.cameraType === "webcam") {
+            // Nếu là webcam nhưng không có file/imageUrl/imageBase64, yêu cầu gửi
+            return res.status(400).json({ 
+              error: "Webcam requires file upload, imageUrl, or imageBase64 in request body. Please provide one of them." 
+            });
+          } else {
+            return res.status(400).json({ 
+              error: `Camera type ${camera.cameraType} requires file upload, HTTP snapshot URL, imageUrl, or imageBase64 in body.` 
+            });
+          }
+        } catch (error: any) {
+          console.error("Error fetching frame from camera:", error.message);
+          return res.status(500).json({ 
+            error: `Failed to fetch frame from camera: ${error.message}` 
+          });
+        }
       }
 
       // Bước 2: Gọi FastAPI để detect license plate
       let licensePlate: string | null = null;
       try {
+        // Gửi imageInput cho FastAPI (có thể là buffer hoặc URL)
+        if (Buffer.isBuffer(imageInput)) {
+          console.log(`[Camera ${camera.id}] Sending image buffer to FastAPI (${imageInput.length} bytes)`);
+        } else {
+          console.log(`[Camera ${camera.id}] Sending image URL to FastAPI: ${imageInput}`);
+          
+          // Kiểm tra URL có thể truy cập được không (optional check, chỉ khi là URL)
+          try {
+            const urlCheck = await axios.head(imageInput, { timeout: 5000 });
+            console.log(`[Camera ${camera.id}] Image URL is accessible, status: ${urlCheck.status}`);
+          } catch (urlError: any) {
+            console.warn(`[Camera ${camera.id}] Warning: Could not verify URL accessibility: ${urlError.message}`);
+            // Không fail ngay, vẫn thử gửi cho FastAPI
+          }
+        }
+
+        // Gửi imageInput cho FastAPI (buffer hoặc URL)
+        console.log(`[Camera ${camera.id}] Calling FastAPI detectLicensePlate with:`, {
+          type: Buffer.isBuffer(imageInput) ? "Buffer" : "URL",
+          value: Buffer.isBuffer(imageInput) ? `Buffer(${imageInput.length} bytes)` : imageInput,
+          fileName: fileName
+        });
+        
         const result = await fastAPIService.detectLicensePlate(
-          imageBuffer,
-          `camera-${camera.id}-frame.jpg`
+          imageInput,
+          fileName
         );
+        
+        console.log(`[Camera ${camera.id}] FastAPI response received:`, {
+          hasImage: !!result.image,
+          imageSize: result.image ? result.image.length : 0,
+          contentType: result.contentType,
+          licensePlate: result.licensePlate || 'null',
+          licensePlateType: typeof result.licensePlate
+        });
+        
         licensePlate = result.licensePlate || null;
+        
+        // Nếu có imageUrl, lưu lại để trả về cho FE
+        if (!imageUrl && typeof imageInput === "string") {
+          imageUrl = imageInput;
+        }
       } catch (error: any) {
-        console.error("Error detecting license plate:", error.message);
+        console.error(`[Camera ${camera.id}] Error detecting license plate:`, {
+          message: error.message,
+          response: error.response?.data ? Buffer.from(error.response.data).toString() : null,
+          status: error.response?.status,
+          imageInput: Buffer.isBuffer(imageInput) ? `Buffer(${imageInput.length} bytes)` : imageInput
+        });
+        
+        // Kiểm tra xem có phải lỗi từ FastAPI không
+        if (error.response) {
+          return res.status(500).json({ 
+            error: `FastAPI error: ${error.response.status} - ${error.message}`,
+            details: error.response.data ? Buffer.from(error.response.data).toString() : null,
+            imageUrl: imageUrl || (typeof imageInput === "string" ? imageInput : undefined)
+          });
+        }
+        
         return res.status(500).json({ 
-          error: `Failed to detect license plate: ${error.message}` 
+          error: `Failed to detect license plate: ${error.message}`,
+          imageUrl: imageUrl || (typeof imageInput === "string" ? imageInput : undefined)
         });
       }
 
       if (!licensePlate) {
+        const imageInfo = Buffer.isBuffer(imageInput) 
+          ? `Buffer(${imageInput.length} bytes)` 
+          : imageInput;
+        console.warn(`[Camera ${camera.id}] FastAPI did not detect license plate from image: ${imageInfo}`);
         return res.status(400).json({ 
-          error: "Could not detect license plate from camera frame" 
+          error: "Could not detect license plate from camera frame",
+          imageUrl: imageUrl || (typeof imageInput === "string" ? imageInput : undefined),
+          suggestion: "Please ensure: 1) FastAPI service is running, 2) Image contains a clear license plate, 3) Image is accessible"
         });
       }
 
@@ -615,18 +737,54 @@ export class CameraController {
       // VehicleDetectionController sẽ xử lý:
       // - Xe đã đăng ký: tạo session với vehicleId
       // - Xe vãng lai: tạo session với vehicleId = null và lưu licensePlate
+      
+      // Validate slotId nếu có (đảm bảo slot thuộc đúng parking lot)
+      let finalSlotId: number | undefined = undefined;
+      if (slotId) {
+        const parsedSlotId = parseInt(slotId);
+        if (!isNaN(parsedSlotId)) {
+          // Kiểm tra slot có thuộc đúng parking lot không
+          const slotRepo = AppDataSource.getRepository(ParkingSlot);
+          const slot = await slotRepo.findOne({
+            where: { 
+              id: parsedSlotId,
+              parkingLotId: finalParkingLotId 
+            },
+          });
+          
+          if (!slot) {
+            return res.status(400).json({ 
+              error: `Slot ${parsedSlotId} does not belong to parking lot ${finalParkingLotId}` 
+            });
+          }
+          
+          finalSlotId = parsedSlotId;
+          console.log(`[Camera ${camera.id}] Validated slot ${finalSlotId} belongs to parking lot ${finalParkingLotId}`);
+        }
+      }
+      
       const vehicleDetectionReq = {
         body: {
           licensePlate,
           flag,
           parkingLotId: finalParkingLotId,
-          slotId: slotId ? parseInt(slotId) : undefined,
-          image: imageBuffer.toString("base64"), // Optional: gửi ảnh dưới dạng base64
+          slotId: finalSlotId,
+          image: imageUrl, // Gửi URL thay vì base64
         },
       } as Request;
 
       // Bước 6: Gọi VehicleDetectionController để xử lý RA/VÀO
       // Method này sẽ gọi handleVehicleEntry (xử lý cả xe vãng lai) hoặc handleVehicleExit
+      // Lưu response để có thể thêm imageUrl vào
+      const originalJson = res.json.bind(res);
+      res.json = function(data: any) {
+        // Thêm imageUrl vào response
+        return originalJson({
+          ...data,
+          imageUrl: imageUrl, // Trả về URL của ảnh
+        });
+      };
+      
       await VehicleDetectionController.handleVehicleDetection(vehicleDetectionReq, res);
     } catch (error: any) {
       console.error("Error in processVehicleFromCamera:", error);

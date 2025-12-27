@@ -2,6 +2,7 @@ import { Router } from "express";
 import { CameraController } from "../controllers/camera.controller";
 import { authenticateToken } from "../middleware/auth.middleware";
 import { requireAdmin } from "../middleware/role.middleware";
+import { uploadImageOptional } from "../middleware/upload.middleware";
 
 const router = Router();
 
@@ -295,6 +296,20 @@ router.post("/:id/detect-parking-space", authenticateToken, CameraController.det
  *                 type: integer
  *                 example: 1
  *                 description: ID của slot (nếu FastAPI detect được, optional)
+ *               imageUrl:
+ *                 type: string
+ *                 example: "http://localhost:3000/uploads/images/camera-8-xxx.jpg"
+ *                 description: |
+ *                   URL của ảnh (ƯU TIÊN - nếu có sẽ dùng trực tiếp).
+ *                   FE có thể upload ảnh trước và gửi URL ở đây.
+ *                   Module AI sẽ fetch ảnh từ URL này để nhận diện biển số.
+ *               imageBase64:
+ *                 type: string
+ *                 example: "data:image/jpeg;base64,/9j/4AAQSkZJRg..."
+ *                 description: |
+ *                   Ảnh dưới dạng base64 (fallback nếu không có imageUrl).
+ *                   Có thể gửi với hoặc không có data URL prefix (data:image/jpeg;base64,...).
+ *                   Nếu không có imageUrl và imageBase64, hệ thống sẽ fetch frame từ camera stream.
  *     responses:
  *       200:
  *         description: Xử lý thành công (VÀO hoặc RA)
@@ -335,7 +350,7 @@ router.post("/:id/detect-parking-space", authenticateToken, CameraController.det
  *       500:
  *         description: Lỗi server hoặc FastAPI
  */
-router.post("/:id/process-vehicle", authenticateToken, CameraController.processVehicleFromCamera);
+router.post("/:id/process-vehicle", authenticateToken, uploadImageOptional, CameraController.processVehicleFromCamera);
 
 export default router;
 

@@ -5,6 +5,7 @@ import { ParkingSession, ParkingSessionStatus } from "../entity/ParkingSession";
 import { ParkingSlot, ParkingSlotStatus } from "../entity/ParkingSlot";
 import { Notification } from "../entity/Notification";
 import { User } from "../entity/User";
+import { PushNotificationService } from "../services/push-notification.service";
 
 interface VehicleDetectionRequest {
   licensePlate: string;
@@ -174,14 +175,41 @@ export class VehicleDetectionController {
       availableSlot.status = ParkingSlotStatus.OCCUPIED;
       await slotRepo.save(availableSlot);
 
-      // Gửi thông báo cho user
+      // Gửi thông báo cho user (database notification + push notification)
+      let notificationSent = false;
+      let pushNotificationSent = false;
+      
       if (vehicle.userId) {
+        // Lưu notification vào database
         const notification = notificationRepo.create({
           userId: vehicle.userId,
           message: `Xe của bạn (${licensePlate}) đã vào bãi đỗ tại vị trí ${availableSlot.slotCode}`,
           isRead: false,
         });
         await notificationRepo.save(notification);
+        notificationSent = true;
+
+        // Gửi push notification nếu user có device token
+        if (vehicle.user) {
+          const userRepo = AppDataSource.getRepository(User);
+          const user = await userRepo.findOne({
+            where: { id: vehicle.userId },
+          });
+
+          if (user && user.deviceToken) {
+            try {
+              pushNotificationSent = await PushNotificationService.sendVehicleEntryNotification(
+                user.deviceToken,
+                licensePlate,
+                availableSlot.slotCode,
+                availableSlot.parkingLot?.name
+              );
+            } catch (pushError: any) {
+              console.error("Error sending push notification:", pushError);
+              // Không fail request nếu push notification lỗi
+            }
+          }
+        }
       }
 
       return res.json({
@@ -197,7 +225,8 @@ export class VehicleDetectionController {
           id: availableSlot.id,
           slotCode: availableSlot.slotCode,
         },
-        notificationSent: !!vehicle.userId,
+        notificationSent,
+        pushNotificationSent,
       });
     } else {
       // Xe vãng lai - không cần tạo vehicle, chỉ lưu biển số
@@ -347,13 +376,37 @@ export class VehicleDetectionController {
     }
 
     // Gửi thông báo cho user (chỉ khi có vehicle đã đăng ký)
+    let notificationSent = false;
+    let pushNotificationSent = false;
+    
     if (vehicle && vehicle.userId) {
+      // Lưu notification vào database
       const notification = notificationRepo.create({
         userId: vehicle.userId,
         message: `Xe của bạn (${licensePlate}) đã ra khỏi bãi đỗ. Phí: ${totalFee.toLocaleString("vi-VN")} VNĐ`,
         isRead: false,
       });
       await notificationRepo.save(notification);
+      notificationSent = true;
+
+      // Gửi push notification nếu user có device token
+      const userRepo = AppDataSource.getRepository(User);
+      const user = await userRepo.findOne({
+        where: { id: vehicle.userId },
+      });
+
+      if (user && user.deviceToken) {
+        try {
+          pushNotificationSent = await PushNotificationService.sendVehicleExitNotification(
+            user.deviceToken,
+            licensePlate,
+            totalFee
+          );
+        } catch (pushError: any) {
+          console.error("Error sending push notification:", pushError);
+          // Không fail request nếu push notification lỗi
+        }
+      }
     }
 
     // Reload session với relations
@@ -382,7 +435,8 @@ export class VehicleDetectionController {
         feeBreakdown: feeBreakdown,
         totalFee: totalFee,
       },
-      notificationSent: !!(vehicle && vehicle.userId),
+      notificationSent,
+      pushNotificationSent,
     });
   }
 }

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { FastAPIController } from "../controllers/fastapi.controller";
 import { authenticateToken } from "../middleware/auth.middleware";
-import { uploadImage, uploadVideo, uploadMixed } from "../middleware/upload.middleware";
+import { uploadImage, uploadVideo, uploadMixed, uploadImageOptional } from "../middleware/upload.middleware";
 
 const router = Router();
 
@@ -166,7 +166,7 @@ router.post(
 router.post(
   "/license-plate/detect",
   authenticateToken,
-  uploadImage,
+  uploadImageOptional,
   FastAPIController.detectLicensePlate
 );
 

@@ -444,6 +444,70 @@ GET /api/parking-sessions?parkingLotId=1&status=completed
 
 ---
 
+## 11. Đăng ký Device Token (Push Notification)
+
+**Endpoint:** `POST /api/users/device-token`
+
+**Cần xác thực (Bearer Token)**
+
+**Request Body:**
+```json
+{
+  "deviceToken": "fcm-device-token-from-firebase"
+}
+```
+
+**Lưu ý:**
+- Device token được lấy từ Firebase SDK trong mobile app
+- Cần đăng ký lại khi user cài đặt lại app hoặc đăng nhập trên thiết bị mới
+- Token mới sẽ ghi đè token cũ
+
+**Response (200):**
+```json
+{
+  "message": "Device token registered successfully",
+  "userId": 1
+}
+```
+
+**Error Responses:**
+- `400`: Dữ liệu không hợp lệ
+- `401`: Chưa đăng nhập
+
+---
+
+## 12. Lấy danh sách thông báo
+
+**Endpoint:** `GET /api/notifications`
+
+**Cần xác thực (Bearer Token)**
+
+**Response (200):**
+```json
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "message": "Xe của bạn (30A-12345) đã vào bãi đỗ tại vị trí A-05",
+    "isRead": false,
+    "createdAt": "2025-01-15T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "userId": 1,
+    "message": "Xe của bạn (30A-12345) đã ra khỏi bãi đỗ. Phí: 96,300 VNĐ",
+    "isRead": false,
+    "createdAt": "2025-01-15T13:00:00.000Z"
+  }
+]
+```
+
+**Lưu ý:** 
+- API này tự động lọc chỉ trả về notifications của người dùng đang đăng nhập
+- Sắp xếp theo thời gian tạo (mới nhất trước)
+
+---
+
 ## Tóm tắt các API cần thiết
 
 | Chức năng | Method | Endpoint | Auth |
@@ -456,6 +520,8 @@ GET /api/parking-sessions?parkingLotId=1&status=completed
 | Tính tiền khi ra | POST | `/api/parking-sessions/{id}/exit` | ✅ |
 | Lịch sử đỗ xe | GET | `/api/parking-sessions?status=completed` | ✅ |
 | Thông tin cá nhân | GET | `/api/auth/profile` | ✅ |
+| Đăng ký device token | POST | `/api/users/device-token` | ✅ |
+| Lấy thông báo | GET | `/api/notifications` | ✅ |
 | Refresh token | POST | `/api/auth/refresh-token` | ❌ |
 | Đăng xuất | POST | `/api/auth/logout` | ❌ |
 

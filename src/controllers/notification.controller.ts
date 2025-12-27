@@ -17,6 +17,24 @@ export class NotificationController {
   static async getAll(req: Request, res: Response) {
     try {
       const repo = AppDataSource.getRepository(Notification);
+      
+      // Get userId from authenticated user
+      const authReq = req as any;
+      const userId = authReq.user?.userId;
+      const userRoleId = authReq.user?.roleId;
+      const isAdmin = userRoleId === 2; // Admin has roleId = 2
+
+      // Nếu user không phải admin, chỉ lấy notifications của chính họ
+      if (userId && !isAdmin) {
+        const notifications = await repo.find({
+          where: { userId },
+          relations: ["user"],
+          order: { createdAt: "DESC" },
+        });
+        return res.json(notifications);
+      }
+
+      // Admin lấy tất cả notifications
       const notifications = await repo.find({
         relations: ["user"],
         order: { createdAt: "DESC" },

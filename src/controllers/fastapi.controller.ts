@@ -242,20 +242,69 @@ export class FastAPIController {
   /**
    * POST /api/license-plate/detect
    * Upload image để nhận annotated PNG và biển số (qua response header)
+   * Hỗ trợ cả file upload (multipart/form-data) và imageUrl/imageBase64 (application/json)
    */
   static async detectLicensePlate(req: Request, res: Response) {
     try {
-      // Lấy file từ req.files (vì dùng upload.fields)
+      // Lấy file từ req.files (nếu là multipart/form-data)
       const files = req.files as { [fieldname: string]: Express.Multer.File[] };
       const file = files?.image?.[0] || files?.file?.[0];
       
-      if (!file) {
-        return res.status(400).json({ error: "Image file is required" });
-      }
+      // Nếu có file upload, dùng file buffer
+      if (file) {
+        const result = await fastAPIService.detectLicensePlate(
+          file.buffer,
+          file.originalname
+        );
 
+        res.setHeader("Content-Type", result.contentType);
+        if (result.licensePlate) {
+          res.setHeader("X-License-Plate", result.licensePlate);
+        }
+        return res.send(result.image);
+      }
+      
+      // Nếu không có file, kiểm tra imageUrl hoặc imageBase64 trong body
+      const { imageUrl, imageBase64 } = req.body;
+      
+      if (!imageUrl && !imageBase64) {
+        return res.status(400).json({ error: "Image file, imageUrl, or imageBase64 is required" });
+      }
+      
+      // Ưu tiên imageUrl
+      let imageInput: string | Buffer;
+      let fileName = "image.jpg";
+      
+      if (imageUrl && typeof imageUrl === "string") {
+        // Validate URL format
+        if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) {
+          return res.status(400).json({ 
+            error: "imageUrl must be a valid HTTP/HTTPS URL" 
+          });
+        }
+        imageInput = imageUrl;
+        fileName = imageUrl.split("/").pop() || "image.jpg";
+      } else if (imageBase64 && typeof imageBase64 === "string") {
+        // Nếu có imageBase64, lưu vào disk và lấy URL
+        try {
+          const { ImageStorageUtil } = await import("../utils/image-storage.util");
+          const savedUrl = ImageStorageUtil.saveBase64Image(imageBase64, "detect-license-plate");
+          imageInput = savedUrl;
+          fileName = savedUrl.split("/").pop() || "image.jpg";
+        } catch (error: any) {
+          console.error("Error saving base64 image:", error.message);
+          return res.status(400).json({ 
+            error: `Invalid base64 image format: ${error.message}` 
+          });
+        }
+      } else {
+        return res.status(400).json({ error: "Invalid imageUrl or imageBase64 format" });
+      }
+      
+      // Gọi FastAPI service với URL hoặc buffer
       const result = await fastAPIService.detectLicensePlate(
-        file.buffer,
-        file.originalname
+        imageInput,
+        fileName
       );
 
       res.setHeader("Content-Type", result.contentType);

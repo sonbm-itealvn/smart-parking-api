@@ -28,6 +28,9 @@ export class User {
   @Column({ type: "timestamp", name: "created_at", default: () => "CURRENT_TIMESTAMP" })
   createdAt!: Date;
 
+  @Column({ type: "varchar", length: 500, name: "device_token", nullable: true })
+  deviceToken!: string | null;
+
   @OneToMany(() => Vehicle, (vehicle) => vehicle.user)
   vehicles!: Vehicle[];
 

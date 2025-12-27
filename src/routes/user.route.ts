@@ -133,4 +133,34 @@ router.put("/:id", requireOwnResourceOrAdmin, UserController.update);
  */
 router.delete("/:id", requireAdmin, UserController.delete);
 
+/**
+ * @swagger
+ * /api/users/device-token:
+ *   post:
+ *     summary: Đăng ký device token để nhận push notification
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - deviceToken
+ *             properties:
+ *               deviceToken:
+ *                 type: string
+ *                 description: FCM device token từ mobile app
+ *     responses:
+ *       200:
+ *         description: Device token đã được đăng ký thành công
+ *       400:
+ *         description: Dữ liệu không hợp lệ
+ *       401:
+ *         description: Chưa đăng nhập
+ */
+router.post("/device-token", UserController.registerDeviceToken);
+
 export default router;

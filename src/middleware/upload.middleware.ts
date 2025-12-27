@@ -93,3 +93,16 @@ export const uploadImageToDisk = multer({
   { name: "file", maxCount: 1 },
 ]);
 
+// Middleware cho image upload optional - chỉ apply multer nếu là multipart/form-data
+// Cho phép JSON body (với imageUrl hoặc imageBase64) pass through
+export const uploadImageOptional = (req: any, res: any, next: any) => {
+  // Kiểm tra nếu là multipart/form-data
+  if (req.headers["content-type"] && req.headers["content-type"].includes("multipart/form-data")) {
+    // Áp dụng multer middleware
+    return uploadImage(req, res, next);
+  } else {
+    // Không phải multipart, bỏ qua multer và tiếp tục
+    next();
+  }
+};
+
