@@ -282,5 +282,86 @@ export class ParkingSessionController {
       return res.status(500).json({ error: error.message });
     }
   }
+
+  /**
+   * Lấy thông tin vị trí đang đỗ của user hiện tại
+   * @param req Request với user info từ token
+   * @param res Response
+   */
+  static async getMyCurrentParking(req: Request, res: Response) {
+    try {
+      const authReq = req as any;
+      const userId = authReq.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const repo = AppDataSource.getRepository(ParkingSession);
+
+      // Tìm active session của user thông qua vehicle
+      const activeSession = await repo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("vehicle.user", "user")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+        .leftJoinAndSelect("session.payments", "payments")
+        .where("user.id = :userId", { userId })
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .orderBy("session.entryTime", "DESC")
+        .getOne();
+
+      if (!activeSession) {
+        return res.json({
+          hasActiveParking: false,
+          currentParking: null,
+        });
+      }
+
+      // Tính thời gian đã đỗ (tính bằng giờ)
+      const entryTime = new Date(activeSession.entryTime);
+      const now = new Date();
+      const durationMs = now.getTime() - entryTime.getTime();
+      const durationHours = Math.ceil(durationMs / (1000 * 60 * 60));
+      const totalHours = durationHours < 1 ? 1 : durationHours;
+
+      return res.json({
+        hasActiveParking: true,
+        currentParking: {
+          session: {
+            id: activeSession.id,
+            entryTime: activeSession.entryTime,
+            licensePlate: activeSession.licensePlate,
+            status: activeSession.status,
+            durationHours: totalHours,
+          },
+          parkingSlot: {
+            id: activeSession.parkingSlot.id,
+            slotCode: activeSession.parkingSlot.slotCode,
+            status: activeSession.parkingSlot.status,
+            coordinates: activeSession.parkingSlot.coordinates,
+          },
+          parkingLot: activeSession.parkingSlot.parkingLot
+            ? {
+                id: activeSession.parkingSlot.parkingLot.id,
+                name: activeSession.parkingSlot.parkingLot.name,
+                address: activeSession.parkingSlot.parkingLot.address,
+                pricePerHour: activeSession.parkingSlot.parkingLot.pricePerHour,
+              }
+            : null,
+          vehicle: activeSession.vehicle
+            ? {
+                id: activeSession.vehicle.id,
+                licensePlate: activeSession.vehicle.licensePlate,
+                vehicleType: activeSession.vehicle.vehicleType,
+              }
+            : null,
+        },
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
 }
 

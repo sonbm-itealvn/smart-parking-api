@@ -58,6 +58,84 @@ router.get("/", ParkingSessionController.getAll);
 
 /**
  * @swagger
+ * /api/parking-sessions/my/current:
+ *   get:
+ *     summary: Lấy thông tin vị trí đang đỗ của user hiện tại
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin vị trí đang đỗ (hoặc null nếu không có)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 hasActiveParking:
+ *                   type: boolean
+ *                   description: Có đang đỗ xe không
+ *                 currentParking:
+ *                   type: object
+ *                   nullable: true
+ *                   properties:
+ *                     session:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         entryTime:
+ *                           type: string
+ *                           format: date-time
+ *                         licensePlate:
+ *                           type: string
+ *                           nullable: true
+ *                         status:
+ *                           type: string
+ *                         durationHours:
+ *                           type: number
+ *                           description: Số giờ đã đỗ (làm tròn lên)
+ *                     parkingSlot:
+ *                       type: object
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         slotCode:
+ *                           type: string
+ *                         status:
+ *                           type: string
+ *                         coordinates:
+ *                           type: array
+ *                           nullable: true
+ *                     parkingLot:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         name:
+ *                           type: string
+ *                         address:
+ *                           type: string
+ *                         pricePerHour:
+ *                           type: number
+ *                     vehicle:
+ *                       type: object
+ *                       nullable: true
+ *                       properties:
+ *                         id:
+ *                           type: integer
+ *                         licensePlate:
+ *                           type: string
+ *                         vehicleType:
+ *                           type: string
+ *       401:
+ *         description: Chưa đăng nhập
+ */
+router.get("/my/current", ParkingSessionController.getMyCurrentParking);
+
+/**
+ * @swagger
  * /api/parking-sessions/{id}:
  *   get:
  *     summary: Lấy phiên đỗ xe theo ID
