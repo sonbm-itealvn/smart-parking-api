@@ -4,6 +4,7 @@ import { Camera } from "../entity/Camera";
 import { Vehicle } from "../entity/Vehicle";
 import { ParkingSession, ParkingSessionStatus } from "../entity/ParkingSession";
 import { ParkingSlot } from "../entity/ParkingSlot";
+import { ParkingLot } from "../entity/ParkingLot";
 import axios from "axios";
 import { fastAPIService } from "../services/fastapi.service";
 import { VehicleDetectionController } from "./vehicle-detection.controller";
@@ -522,13 +523,36 @@ export class CameraController {
       }
 
       // Lấy parkingLotId từ camera hoặc request body
-      const finalParkingLotId = parkingLotId 
-        ? parseInt(parkingLotId) 
-        : (camera.parkingLotId || undefined);
+      // Validate chặt chẽ để đảm bảo parkingLotId hợp lệ
+      let finalParkingLotId: number | undefined = undefined;
+      
+      if (parkingLotId) {
+        const parsedParkingLotId = parseInt(parkingLotId);
+        if (isNaN(parsedParkingLotId) || parsedParkingLotId <= 0) {
+          return res.status(400).json({ 
+            error: `Invalid parkingLotId: ${parkingLotId}. Must be a positive integer.` 
+          });
+        }
+        finalParkingLotId = parsedParkingLotId;
+      } else if (camera.parkingLotId) {
+        finalParkingLotId = camera.parkingLotId;
+      }
 
       if (!finalParkingLotId) {
         return res.status(400).json({ 
           error: "parkingLotId is required. Either set it in camera or provide in request body." 
+        });
+      }
+
+      // Validate rằng parkingLotId tồn tại trong database
+      const parkingLotRepo = AppDataSource.getRepository(ParkingLot);
+      const parkingLot = await parkingLotRepo.findOne({
+        where: { id: finalParkingLotId },
+      });
+
+      if (!parkingLot) {
+        return res.status(404).json({ 
+          error: `Parking lot with ID ${finalParkingLotId} not found` 
         });
       }
 
@@ -657,79 +681,98 @@ export class CameraController {
         });
       }
 
-      // Bước 3: Kiểm tra xem có active session không để tự động quyết định VÀO/RA
-      // Logic này giống với logic trong VehicleDetectionController để đảm bảo nhất quán
+      // Bước 3: Kiểm tra vehicle trong database (để biết có phải vãng lai hay không)
       const vehicleRepo = AppDataSource.getRepository(Vehicle);
-      const sessionRepo = AppDataSource.getRepository(ParkingSession);
-      
-      // Tìm vehicle trong database (có thể là xe đã đăng ký hoặc xe vãng lai)
       const vehicle = await vehicleRepo.findOne({
         where: { licensePlate },
         relations: ["user"],
       });
 
-      // Kiểm tra active session - xử lý cả xe đã đăng ký và xe vãng lai
-      // Logic này giống với VehicleDetectionController.handleVehicleEntry
-      let activeSession = null;
+      // Bước 4: Kiểm tra session (KHÔNG filter theo bãi đỗ - check toàn bộ)
+      // Tìm session mới nhất của xe này (có thể là active hoặc completed)
+      const sessionRepo = AppDataSource.getRepository(ParkingSession);
+      let latestSession = null;
+      
       if (vehicle) {
-        // Xe đã đăng ký: tìm session theo vehicleId
-        activeSession = await sessionRepo.findOne({
-          where: {
-            vehicleId: vehicle.id,
-            status: ParkingSessionStatus.ACTIVE,
-          },
-        });
+        // Xe đã đăng ký: tìm session theo vehicleId (không filter theo bãi đỗ)
+        latestSession = await sessionRepo
+          .createQueryBuilder("session")
+          .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+          .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+          .where("session.vehicleId = :vehicleId", { vehicleId: vehicle.id })
+          .orderBy("session.entryTime", "DESC")
+          .getOne();
       } else {
-        // Xe vãng lai: tìm session theo licensePlate với vehicleId = null
-        activeSession = await sessionRepo.findOne({
-          where: {
-            licensePlate: licensePlate,
-            vehicleId: null, // Xe vãng lai không có vehicleId
-            status: ParkingSessionStatus.ACTIVE,
-          },
-        });
+        // Xe vãng lai: tìm session theo licensePlate với vehicleId = null (không filter theo bãi đỗ)
+        latestSession = await sessionRepo
+          .createQueryBuilder("session")
+          .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+          .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+          .where("session.licensePlate = :licensePlate", { licensePlate })
+          .andWhere("session.vehicleId IS NULL") // Xe vãng lai không có vehicleId
+          .orderBy("session.entryTime", "DESC")
+          .getOne();
       }
 
-      // Bước 4: Tự động quyết định VÀO/RA dựa trên active session
-      // Nếu KHÔNG có active session → VÀO (flag = 0)
-      // Nếu CÓ active session → RA (flag = 1)
-      const flag = activeSession ? 1 : 0;
+      // Bước 5: Quyết định VÀO/RA dựa trên session
+      // - Nếu CHƯA có session → VÀO (flag = 0)
+      // - Nếu CÓ session và status = ACTIVE → RA (flag = 1)
+      // - Nếu CÓ session và status = COMPLETED → VÀO (flag = 0, tạo mới bản ghi)
+      let flag: 0 | 1;
+      if (!latestSession) {
+        // Chưa có session → xe vào
+        flag = 0;
+      } else if (latestSession.status === ParkingSessionStatus.ACTIVE) {
+        // Có active session → xe ra
+        flag = 1;
+      } else {
+        // Có session nhưng đã completed → xe vào (tạo mới bản ghi)
+        flag = 0;
+      }
 
-      // Bước 5: Tạo request object để gọi VehicleDetectionController
-      // VehicleDetectionController sẽ xử lý:
-      // - Xe đã đăng ký: tạo session với vehicleId
-      // - Xe vãng lai: tạo session với vehicleId = null và lưu licensePlate
-      
-      // Validate slotId nếu có (đảm bảo slot thuộc đúng parking lot)
+      // Bước 6: Nếu xe vào (flag = 0), check bãi đỗ và vị trí đỗ
+      // Nếu xe ra (flag = 1), không cần check bãi đỗ (tìm active session bất kỳ)
       let finalSlotId: number | undefined = undefined;
-      if (slotId) {
-        const parsedSlotId = parseInt(slotId);
-        if (!isNaN(parsedSlotId)) {
-          // Kiểm tra slot có thuộc đúng parking lot không
-          const slotRepo = AppDataSource.getRepository(ParkingSlot);
-          const slot = await slotRepo.findOne({
-            where: { 
-              id: parsedSlotId,
-              parkingLotId: finalParkingLotId 
-            },
+      
+      if (flag === 0) {
+        // XE VÀO: Bắt buộc phải có parkingLotId và validate slotId
+        if (!finalParkingLotId) {
+          return res.status(400).json({ 
+            error: "parkingLotId is required when vehicle is entering. Either set it in camera or provide in request body." 
           });
-          
-          if (!slot) {
-            return res.status(400).json({ 
-              error: `Slot ${parsedSlotId} does not belong to parking lot ${finalParkingLotId}` 
+        }
+        
+        // Validate slotId nếu có (đảm bảo slot thuộc đúng parking lot)
+        if (slotId) {
+          const parsedSlotId = parseInt(slotId);
+          if (!isNaN(parsedSlotId)) {
+            // Kiểm tra slot có thuộc đúng parking lot không
+            const slotRepo = AppDataSource.getRepository(ParkingSlot);
+            const slot = await slotRepo.findOne({
+              where: { 
+                id: parsedSlotId,
+                parkingLotId: finalParkingLotId 
+              },
             });
+            
+            if (!slot) {
+              return res.status(400).json({ 
+                error: `Slot ${parsedSlotId} does not belong to parking lot ${finalParkingLotId}` 
+              });
+            }
+            
+            finalSlotId = parsedSlotId;
           }
-          
-          finalSlotId = parsedSlotId;
         }
       }
+      // XE RA: Không cần parkingLotId và slotId (tìm active session bất kỳ)
       
       const vehicleDetectionReq = {
         body: {
           licensePlate,
           flag,
-          parkingLotId: finalParkingLotId,
-          slotId: finalSlotId,
+          parkingLotId: flag === 0 ? finalParkingLotId : undefined, // Chỉ truyền khi vào
+          slotId: flag === 0 ? finalSlotId : undefined, // Chỉ truyền khi vào
           image: imageUrl, // Gửi URL thay vì base64
         },
       } as Request;

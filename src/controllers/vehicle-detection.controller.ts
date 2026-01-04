@@ -3,6 +3,7 @@ import { AppDataSource } from "../config/database";
 import { Vehicle, VehicleType } from "../entity/Vehicle";
 import { ParkingSession, ParkingSessionStatus } from "../entity/ParkingSession";
 import { ParkingSlot, ParkingSlotStatus } from "../entity/ParkingSlot";
+import { ParkingLot } from "../entity/ParkingLot";
 import { Notification } from "../entity/Notification";
 import { User } from "../entity/User";
 import { PushNotificationService } from "../services/push-notification.service";
@@ -54,7 +55,8 @@ export class VehicleDetectionController {
         return await VehicleDetectionController.handleVehicleExit(
           res,
           licensePlate,
-          vehicle
+          vehicle,
+          parkingLotId
         );
       }
     } catch (error: any) {
@@ -77,32 +79,34 @@ export class VehicleDetectionController {
     const slotRepo = AppDataSource.getRepository(ParkingSlot);
     const notificationRepo = AppDataSource.getRepository(Notification);
 
-    // Kiểm tra xem có session active nào với biển số này không
-    // Tìm theo vehicleId (nếu có) hoặc licensePlate (xe vãng lai)
+    // Kiểm tra xem có session active nào với biển số này không (KHÔNG filter theo bãi đỗ)
+    // Một xe chỉ có thể có một active session tại một thời điểm
     let activeSession = null;
     if (vehicle) {
-      activeSession = await sessionRepo.findOne({
-        where: {
-          vehicleId: vehicle.id,
-          status: ParkingSessionStatus.ACTIVE,
-        },
-        relations: ["vehicle"],
-      });
+      // Tìm active session của vehicle (không filter theo bãi đỗ)
+      activeSession = await sessionRepo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .where("session.vehicleId = :vehicleId", { vehicleId: vehicle.id })
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .getOne();
     } else {
-      // Kiểm tra xe vãng lai có session active không
-      activeSession = await sessionRepo.findOne({
-        where: {
-          licensePlate: licensePlate,
-          vehicleId: null, // Xe vãng lai
-          status: ParkingSessionStatus.ACTIVE,
-        },
-      });
+      // Kiểm tra xe vãng lai có session active không (không filter theo bãi đỗ)
+      activeSession = await sessionRepo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .where("session.licensePlate = :licensePlate", { licensePlate })
+        .andWhere("session.vehicleId IS NULL") // Xe vãng lai
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .getOne();
     }
 
     if (activeSession) {
       return res.status(400).json({
         error: "Vehicle already has an active parking session",
         sessionId: activeSession.id,
+        parkingLotId: activeSession.parkingSlot?.parkingLotId,
       });
     }
 
@@ -113,10 +117,23 @@ export class VehicleDetectionController {
       });
     }
 
+    // Validate rằng parkingLotId tồn tại trong database
+    const parkingLotRepo = AppDataSource.getRepository(ParkingLot);
+    const parkingLot = await parkingLotRepo.findOne({
+      where: { id: parkingLotId },
+    });
+
+    if (!parkingLot) {
+      return res.status(404).json({ 
+        error: `Parking lot with ID ${parkingLotId} not found` 
+      });
+    }
+
     let availableSlot: ParkingSlot | null = null;
 
     if (slotId) {
       // Nếu FastAPI đã detect được slot - kiểm tra slot có thuộc đúng parkingLotId không
+      console.log(`[VehicleEntry] Looking for slot ${slotId} in parking lot ${parkingLotId}`);
       availableSlot = await slotRepo.findOne({
         where: { 
           id: slotId, 
@@ -127,20 +144,48 @@ export class VehicleDetectionController {
       });
 
       if (!availableSlot) {
+        // Kiểm tra xem slot có tồn tại nhưng không thuộc bãi đỗ này không
+        const slotExists = await slotRepo.findOne({
+          where: { id: slotId },
+          relations: ["parkingLot"],
+        });
+        
+        if (slotExists) {
+          if (slotExists.parkingLotId !== parkingLotId) {
+            return res.status(400).json({ 
+              error: `Slot ${slotId} belongs to parking lot ${slotExists.parkingLotId}, not ${parkingLotId}` 
+            });
+          }
+          if (slotExists.status !== ParkingSlotStatus.AVAILABLE) {
+            return res.status(400).json({ 
+              error: `Slot ${slotId} is not available (status: ${slotExists.status})` 
+            });
+          }
+        }
+        
         return res.status(404).json({ 
           error: `Slot ${slotId} not found or not available in parking lot ${parkingLotId}` 
         });
       }
+      
+      console.log(`[VehicleEntry] Found slot ${availableSlot.id} (${availableSlot.slotCode}) in parking lot ${parkingLotId}`);
     } else {
-      // Tìm slot trống đầu tiên trong bãi đỗ được chỉ định
+      // Tìm slot trống đầu tiên TRONG BÃI ĐỖ ĐƯỢC CHỈ ĐỊNH
+      console.log(`[VehicleEntry] Looking for available slot in parking lot ${parkingLotId}`);
       availableSlot = await slotRepo.findOne({
         where: {
-          parkingLotId: parkingLotId,
+          parkingLotId: parkingLotId, // CHỈ tìm trong bãi đỗ được chỉ định
           status: ParkingSlotStatus.AVAILABLE,
         },
         relations: ["parkingLot"],
         order: { id: "ASC" }, // Lấy slot đầu tiên để có thứ tự nhất quán
       });
+      
+      if (availableSlot) {
+        console.log(`[VehicleEntry] Found available slot ${availableSlot.id} (${availableSlot.slotCode}) in parking lot ${parkingLotId}`);
+      } else {
+        console.log(`[VehicleEntry] No available slot found in parking lot ${parkingLotId}`);
+      }
     }
 
     if (!availableSlot) {
@@ -149,10 +194,11 @@ export class VehicleDetectionController {
       });
     }
 
-    // Đảm bảo slot thuộc đúng bãi đỗ (double check)
+    // Đảm bảo slot thuộc đúng bãi đỗ (double check - không bao giờ được bỏ qua)
     if (availableSlot.parkingLotId !== parkingLotId) {
+      console.error(`[VehicleEntry] ERROR: Slot ${availableSlot.id} belongs to parking lot ${availableSlot.parkingLotId}, not ${parkingLotId}`);
       return res.status(400).json({ 
-        error: `Slot ${availableSlot.id} does not belong to parking lot ${parkingLotId}` 
+        error: `Slot ${availableSlot.id} does not belong to parking lot ${parkingLotId}. Slot belongs to parking lot ${availableSlot.parkingLotId}` 
       });
     }
 
@@ -277,36 +323,41 @@ export class VehicleDetectionController {
 
   /**
    * Xử lý khi xe ra
+   * Tìm active session bất kỳ (không filter theo bãi đỗ) vì một xe chỉ có thể có một active session
    */
   private static async handleVehicleExit(
     res: Response,
     licensePlate: string,
-    vehicle: Vehicle | null
+    vehicle: Vehicle | null,
+    parkingLotId?: number // Optional - không bắt buộc khi ra
   ) {
     const sessionRepo = AppDataSource.getRepository(ParkingSession);
     const notificationRepo = AppDataSource.getRepository(Notification);
+    const slotRepo = AppDataSource.getRepository(ParkingSlot);
 
-    // Tìm session active với biển số này
-    // Nếu có vehicle thì tìm theo vehicleId, nếu không thì tìm theo licensePlate (xe vãng lai)
+    // Tìm session active với biển số này (KHÔNG filter theo bãi đỗ - tìm toàn bộ)
+    // Một xe chỉ có thể có một active session tại một thời điểm
     let activeSession = null;
     if (vehicle) {
-      activeSession = await sessionRepo.findOne({
-        where: {
-          vehicleId: vehicle.id,
-          status: ParkingSessionStatus.ACTIVE,
-        },
-        relations: ["vehicle", "parkingSlot", "parkingSlot.parkingLot"],
-      });
+      // Tìm active session của vehicle (không filter theo bãi đỗ)
+      activeSession = await sessionRepo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+        .where("session.vehicleId = :vehicleId", { vehicleId: vehicle.id })
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .getOne();
     } else {
-      // Tìm session của xe vãng lai theo licensePlate
-      activeSession = await sessionRepo.findOne({
-        where: {
-          licensePlate: licensePlate,
-          vehicleId: null, // Xe vãng lai
-          status: ParkingSessionStatus.ACTIVE,
-        },
-        relations: ["parkingSlot", "parkingSlot.parkingLot"],
-      });
+      // Tìm session của xe vãng lai theo licensePlate (không filter theo bãi đỗ)
+      activeSession = await sessionRepo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+        .where("session.licensePlate = :licensePlate", { licensePlate })
+        .andWhere("session.vehicleId IS NULL") // Xe vãng lai
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .getOne();
     }
 
     if (!activeSession) {
@@ -317,7 +368,6 @@ export class VehicleDetectionController {
     }
 
     // Tính tiền và cho xe ra (sử dụng logic tương tự từ ParkingSessionController)
-    const slotRepo = AppDataSource.getRepository(ParkingSlot);
     const exitTime = new Date();
     const entryTime = new Date(activeSession.entryTime);
     const durationMs = exitTime.getTime() - entryTime.getTime();

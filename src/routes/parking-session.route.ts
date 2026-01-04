@@ -281,4 +281,115 @@ router.delete("/:id", requireAdmin, ParkingSessionController.delete);
  */
 router.post("/:id/exit", ParkingSessionController.exitVehicle);
 
+/**
+ * @swagger
+ * /api/parking-sessions/my/current/preview-fee:
+ *   get:
+ *     summary: Xem trước số tiền có thể mất cho thời gian đỗ đến hiện tại
+ *     tags: [Parking Sessions]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Thông tin preview phí đỗ xe
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Fee preview calculated successfully
+ *                 parkingSession:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     entryTime:
+ *                       type: string
+ *                       format: date-time
+ *                     licensePlate:
+ *                       type: string
+ *                       nullable: true
+ *                     status:
+ *                       type: string
+ *                 parkingSlot:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     slotCode:
+ *                       type: string
+ *                 parkingLot:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     address:
+ *                       type: string
+ *                     pricePerHour:
+ *                       type: number
+ *                 feePreview:
+ *                   type: object
+ *                   properties:
+ *                     entryTime:
+ *                       type: string
+ *                       format: date-time
+ *                     currentTime:
+ *                       type: string
+ *                       format: date-time
+ *                     exactDuration:
+ *                       type: object
+ *                       properties:
+ *                         hours:
+ *                           type: integer
+ *                           example: 2
+ *                         minutes:
+ *                           type: integer
+ *                           example: 30
+ *                         totalHours:
+ *                           type: number
+ *                           example: 2.5
+ *                     durationHours:
+ *                       type: number
+ *                       example: 3
+ *                       description: Số giờ đã làm tròn lên để tính phí
+ *                     pricePerHour:
+ *                       type: number
+ *                       example: 30000
+ *                     firstHourFee:
+ *                       type: number
+ *                       example: 30000
+ *                     increaseRate:
+ *                       type: string
+ *                       example: "10%"
+ *                     feeBreakdown:
+ *                       type: array
+ *                       description: Chi tiết phí từng giờ
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           hour:
+ *                             type: number
+ *                             example: 1
+ *                           fee:
+ *                             type: number
+ *                             example: 30000
+ *                     estimatedFee:
+ *                       type: number
+ *                       format: decimal
+ *                       example: 96300
+ *                       description: Số tiền ước tính (dựa trên số giờ làm tròn lên)
+ *                     note:
+ *                       type: string
+ *                       example: This is an estimated fee based on rounded-up hours. Actual fee may vary when exiting.
+ *       401:
+ *         description: Chưa đăng nhập
+ *       404:
+ *         description: Không có active parking session
+ */
+router.get("/my/current/preview-fee", ParkingSessionController.previewCurrentFee);
+
 export default router;

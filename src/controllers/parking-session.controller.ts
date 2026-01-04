@@ -363,5 +363,125 @@ export class ParkingSessionController {
       return res.status(500).json({ error: error.message });
     }
   }
+
+  /**
+   * Xem trước số tiền có thể mất cho thời gian đỗ đến hiện tại
+   * @param req Request với user info từ token
+   * @param res Response
+   */
+  static async previewCurrentFee(req: Request, res: Response) {
+    try {
+      const authReq = req as any;
+      const userId = authReq.user?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      const repo = AppDataSource.getRepository(ParkingSession);
+
+      // Tìm active session của user thông qua vehicle
+      const activeSession = await repo
+        .createQueryBuilder("session")
+        .leftJoinAndSelect("session.vehicle", "vehicle")
+        .leftJoinAndSelect("vehicle.user", "user")
+        .leftJoinAndSelect("session.parkingSlot", "parkingSlot")
+        .leftJoinAndSelect("parkingSlot.parkingLot", "parkingLot")
+        .where("user.id = :userId", { userId })
+        .andWhere("session.status = :status", { status: ParkingSessionStatus.ACTIVE })
+        .orderBy("session.entryTime", "DESC")
+        .getOne();
+
+      if (!activeSession) {
+        return res.status(404).json({
+          error: "No active parking session found",
+          message: "You don't have any active parking session",
+        });
+      }
+
+      // Lấy parking lot
+      const parkingLot = activeSession.parkingSlot?.parkingLot;
+      if (!parkingLot) {
+        return res.status(404).json({ error: "Parking lot not found" });
+      }
+
+      // Lấy giá mỗi giờ từ parking lot
+      const pricePerHour = Number(parkingLot.pricePerHour);
+      if (!pricePerHour || pricePerHour <= 0) {
+        return res.status(400).json({
+          error: "Invalid pricePerHour for parking lot",
+        });
+      }
+
+      // Tính số giờ đã đỗ từ entryTime đến hiện tại (làm tròn lên)
+      const entryTime = new Date(activeSession.entryTime);
+      const currentTime = new Date();
+      const durationMs = currentTime.getTime() - entryTime.getTime();
+      const durationHours = Math.ceil(durationMs / (1000 * 60 * 60)); // Làm tròn lên đến giờ gần nhất
+      const totalHours = durationHours < 1 ? 1 : durationHours; // Tối thiểu 1 giờ
+
+      // Tính phí theo cơ chế: Giờ đầu = pricePerHour, mỗi giờ tiếp theo tăng 10%
+      const INCREASE_RATE = 1.1; // 10% increase
+
+      let totalFee = 0;
+      let currentHourFee = pricePerHour;
+      const feeBreakdown: Array<{ hour: number; fee: number }> = [];
+
+      for (let hour = 1; hour <= totalHours; hour++) {
+        if (hour === 1) {
+          // Giờ đầu tiên: pricePerHour
+          currentHourFee = pricePerHour;
+        } else {
+          // Các giờ tiếp theo: tăng 10%
+          currentHourFee = Math.round(currentHourFee * INCREASE_RATE);
+        }
+        totalFee += currentHourFee;
+        feeBreakdown.push({ hour, fee: currentHourFee });
+      }
+
+      // Tính thời gian đã đỗ (chính xác hơn, không làm tròn)
+      const exactDurationMs = currentTime.getTime() - entryTime.getTime();
+      const exactDurationHours = exactDurationMs / (1000 * 60 * 60);
+      const exactDurationMinutes = Math.floor((exactDurationMs % (1000 * 60 * 60)) / (1000 * 60));
+
+      return res.json({
+        message: "Fee preview calculated successfully",
+        parkingSession: {
+          id: activeSession.id,
+          entryTime: activeSession.entryTime,
+          licensePlate: activeSession.licensePlate,
+          status: activeSession.status,
+        },
+        parkingSlot: {
+          id: activeSession.parkingSlot.id,
+          slotCode: activeSession.parkingSlot.slotCode,
+        },
+        parkingLot: {
+          id: parkingLot.id,
+          name: parkingLot.name,
+          address: parkingLot.address || parkingLot.location,
+          pricePerHour: parkingLot.pricePerHour,
+        },
+        feePreview: {
+          entryTime: entryTime,
+          currentTime: currentTime,
+          exactDuration: {
+            hours: Math.floor(exactDurationHours),
+            minutes: exactDurationMinutes,
+            totalHours: parseFloat(exactDurationHours.toFixed(2)),
+          },
+          durationHours: totalHours, // Số giờ đã làm tròn lên để tính phí
+          pricePerHour: pricePerHour,
+          firstHourFee: pricePerHour,
+          increaseRate: "10%",
+          feeBreakdown: feeBreakdown,
+          estimatedFee: totalFee, // Số tiền ước tính (dựa trên số giờ làm tròn lên)
+          note: "This is an estimated fee based on rounded-up hours. Actual fee may vary when exiting.",
+        },
+      });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  }
 }
 
